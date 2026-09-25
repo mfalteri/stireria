@@ -1015,46 +1015,132 @@ function testaDocumento(riferimentoEtichetta, riferimento, sottotitolo){
         </div>`;
 }
 
-function mostraDocumento(titolo, html, nomeFile){
+/* Documento in anteprima: "a4" (piani di lavoro) o "etichetta" (conferma d'ordine). */
+let documentoCorrente = { tipo:"a4", ordine:null };
+
+function mostraDocumento(titolo, html, nomeFile, tipo = "a4", ordine = null){
+    documentoCorrente = { tipo, ordine };
     $("#anteprimaTitolo").textContent = titolo;
-    $("#anteprimaNota").textContent = nomeFile;
+    $("#anteprimaNota").textContent = tipo === "etichetta"
+        ? "Etichetta Brother DK-11202 · 100 × 62 mm · " + nomeFile
+        : nomeFile;
     $("#foglio").innerHTML = html;
+    $("#foglio").classList.toggle("foglio-etichetta", tipo === "etichetta");
+    /* Formato della pagina per la stampa dal browser */
+    $("#paginaStampa").textContent = tipo === "etichetta"
+        ? "@page{size:100mm 62mm;margin:0;}"
+        : "@page{size:A4;margin:14mm;}";
     nomeFilePdf = nomeFile;
     $("#anteprima").hidden = false;
     $(".anteprima-corpo").scrollTop = 0;
     $("#stampaDoc").focus();
 }
 
+/* 41791234567 → +41 79 123 45 67 (gli altri numeri restano con il solo "+") */
+function telefonoLeggibile(n){
+    n = normalizzaTelefono(n);
+    return /^41\d{9}$/.test(n)
+        ? "+41 " + n.slice(2,4) + " " + n.slice(4,7) + " " + n.slice(7,9) + " " + n.slice(9)
+        : "+" + n;
+}
+
+const testoCapiEtichetta = o => CAPI.filter(c => o[c.k] > 0)
+    .map(c => o[c.k] + " " + (o[c.k] === 1 ? c.uno : c.nome.toLowerCase()))
+    .join(" · ");
+
+const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
+
+/* Conferma d'ordine su etichetta Brother DK-11202 (100 × 62 mm). */
 function apriConferma(o){
     const creato = o.creato.slice(0,10);
-    const html = testaDocumento("Ordine", "N° " + numeroOrdine(o.id), "Stireria · Sede " + SEDI[o.sede]) + `
-        <h1>Conferma d'ordine</h1>
-        <p class="sottotitolo">Grazie per averci affidato i suoi capi.</p>
-        <dl class="doc-kv">
-            <dt>Cliente</dt><dd>${esc(o.nome)} ${esc(o.cognome)}</dd>
-            <dt>Telefono</dt><dd>+${esc(o.telefono)}</dd>
-            <dt>Registrato il</dt><dd>${dataLunga(daISO(creato))}, ore ${o.creato.slice(11)}</dd>
-            <dt>Sede</dt><dd>${SEDI[o.sede]}</dd>
-        </dl>
-        <h2>Capi consegnati</h2>
-        <table class="doc-tab">
-            <thead><tr><th>Capo</th><th class="n">Quantità</th></tr></thead>
-            <tbody>${CAPI.filter(c => o[c.k] > 0).map(c => `<tr><td>${c.nome}</td><td class="n">${o[c.k]}</td></tr>`).join("")}</tbody>
-        </table>
-        <div class="doc-ritiro">
-            <span>Ritiro</span>
-            <strong>${dataLunga(daISO(o.ritiro))}</strong>
-            <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
-        </div>
-        <p class="doc-nota">Presenti questa conferma al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>
-        <div class="doc-firma"><div>Firma dell'operatore</div><div>Firma del cliente</div></div>`;
+    const html = `
+        <div class="etichetta">
+            <div class="et-testa">
+                <img src="${LOGO}" alt="Frequenze">
+                <div class="et-ente"><strong>ASSOCIAZIONE FREQUENZE</strong><span>Stireria · ${SEDI[o.sede]}</span></div>
+                <div class="et-numero"><span>Ordine</span><b>N° ${numeroOrdine(o.id)}</b></div>
+            </div>
+            <div class="et-cliente">
+                <strong>${esc(o.nome)} ${esc(o.cognome)}</strong>
+                <span>${esc(telefonoLeggibile(o.telefono))} · registrato il ${pad(daISO(creato).getDate())}.${pad(daISO(creato).getMonth()+1)}. alle ${o.creato.slice(11)}</span>
+            </div>
+            <div class="et-capi">${esc(testoCapiEtichetta(o))}</div>
+            <div class="et-ritiro">
+                <span>Ritiro</span>
+                <strong>${dataPunti(daISO(o.ritiro))}</strong>
+                <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
+            </div>
+        </div>`;
 
     const nome = creato + "_" + numeroOrdine(o.id) + "_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
     if(ordineRegistrato && o.id === ordineRegistrato.id){
         confermaAperta = true;
         aggiornaTicket();
     }
-    mostraDocumento("Conferma d'ordine N° " + numeroOrdine(o.id), html, nome);
+    mostraDocumento("Conferma d'ordine N° " + numeroOrdine(o.id), html, nome, "etichetta", o);
+}
+
+/*
+PDF vettoriale dell'etichetta: 100 × 62 mm orizzontale, solo nero,
+testo nitido per la stampa termica Brother QL.
+*/
+function pdfEtichetta(o){
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit:"mm", format:[62,100], orientation:"landscape" });
+    const sx = 4, dx = 96, larghezza = dx - sx;
+    const creato = daISO(o.creato.slice(0,10));
+    const taglia = (testo, max) => pdf.splitTextToSize(testo, max)[0];
+
+    pdf.setTextColor(0);
+    pdf.setDrawColor(0);
+
+    /* Intestazione */
+    pdf.addImage(LOGO, "PNG", sx, 3.2, 7.8, 9);
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(7.5);
+    pdf.text("ASSOCIAZIONE FREQUENZE", sx + 10, 6.8);
+    pdf.setFont("helvetica","normal");
+    pdf.setFontSize(6.5);
+    pdf.text("Stireria · " + SEDI[o.sede], sx + 10, 10);
+
+    pdf.setFontSize(5.5);
+    pdf.text("ORDINE", dx, 5.8, { align:"right", charSpace:0.3 });
+    pdf.setFont("courier","bold");
+    pdf.setFontSize(14);
+    pdf.text("N° " + numeroOrdine(o.id), dx, 11.2, { align:"right" });
+
+    pdf.setLineWidth(0.35);
+    pdf.line(sx, 13.6, dx, 13.6);
+
+    /* Cliente */
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(12);
+    pdf.text(taglia(o.nome + " " + o.cognome, larghezza), sx, 19.6);
+    pdf.setFont("helvetica","normal");
+    pdf.setFontSize(7.5);
+    pdf.text(taglia(telefonoLeggibile(o.telefono) + " · registrato il " +
+        pad(creato.getDate()) + "." + pad(creato.getMonth()+1) + ". alle " + o.creato.slice(11), larghezza), sx, 23.8);
+
+    /* Capi */
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(9);
+    pdf.splitTextToSize(testoCapiEtichetta(o), larghezza).slice(0,2)
+        .forEach((riga, i) => pdf.text(riga, sx, 29.8 + i * 3.8));
+
+    /* Ritiro */
+    pdf.setLineWidth(0.45);
+    pdf.roundedRect(sx, 38.5, larghezza, 19.5, 1.6, 1.6, "S");
+    pdf.setFont("helvetica","normal");
+    pdf.setFontSize(6);
+    pdf.text("RITIRO", sx + 3, 43, { charSpace:0.3 });
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(14);
+    pdf.text(dataPunti(daISO(o.ritiro)), sx + 3, 49.6);
+    pdf.setFont("helvetica","normal");
+    pdf.setFontSize(7.5);
+    pdf.text(ORA_RITIRO + " · presso " + SEDI[o.sede], sx + 3, 54.4);
+
+    return pdf;
 }
 
 function righeCapi(lavori){
@@ -1147,6 +1233,12 @@ $("#stampaDoc").addEventListener("click", () => window.print());
 $("#scaricaPdf").addEventListener("click", async () => {
     const b = $("#scaricaPdf");
     if(!window.html2canvas || !window.jspdf) return;
+
+    if(documentoCorrente.tipo === "etichetta"){
+        pdfEtichetta(documentoCorrente.ordine).save(nomeFilePdf);
+        return;
+    }
+
     b.disabled = true;
     b.textContent = "Creazione PDF…";
     try{

@@ -943,6 +943,50 @@ button,input,select{font:inherit;color:inherit;}
 .doc-giorno h3{font-size:15px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;}
 .doc-giorno h3 span{font-family:var(--mono);font-weight:500;font-size:12px;color:#555;}
 
+/* Conferma d'ordine: etichetta Brother DK-11202, 100 × 62 mm, solo nero */
+.foglio.foglio-etichetta{
+    width:100mm;
+    height:62mm;
+    max-width:none;
+    padding:0;
+    overflow:hidden;
+    border-radius:2mm;
+}
+.etichetta{
+    box-sizing:border-box;
+    width:100mm;
+    height:62mm;
+    padding:3.2mm 4mm 4mm;
+    display:grid;
+    grid-template-rows:auto auto 1fr auto;
+    gap:1.4mm;
+    color:#000;
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    line-height:1.15;
+}
+.et-testa{display:flex;align-items:center;gap:2.2mm;padding-bottom:1.4mm;border-bottom:.35mm solid #000;}
+.et-testa img{width:7.8mm;height:auto;}
+.et-ente{display:grid;gap:.4mm;}
+.et-ente strong{font-size:7.5pt;font-weight:700;letter-spacing:.02em;}
+.et-ente span{font-size:6.5pt;}
+.et-numero{margin-left:auto;display:grid;text-align:right;}
+.et-numero span{font-size:5.5pt;letter-spacing:.08em;text-transform:uppercase;}
+.et-numero b{font-family:"Courier New",Courier,monospace;font-size:14pt;font-weight:700;}
+.et-cliente{display:grid;gap:.6mm;min-width:0;}
+.et-cliente strong{font-size:12pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.et-cliente span{font-size:7.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.et-capi{font-size:9pt;font-weight:700;overflow:hidden;}
+.et-ritiro{
+    display:grid;
+    gap:.5mm;
+    padding:1.8mm 3mm 2mm;
+    border:.45mm solid #000;
+    border-radius:1.6mm;
+}
+.et-ritiro span:first-child{font-size:6pt;letter-spacing:.08em;text-transform:uppercase;}
+.et-ritiro strong{font-size:14pt;font-weight:700;}
+.et-ritiro span:last-child{font-size:7.5pt;}
+
 @media (max-width:960px){
     .griglia-ordine,
     .griglia-piano{grid-template-columns:1fr;}
@@ -977,15 +1021,17 @@ button,input,select{font:inherit;color:inherit;}
 
 /* Stampa: solo il foglio */
 @media print{
-    @page{size:A4;margin:14mm;}
     html,body{background:#fff !important;}
     body > *:not(#anteprima){display:none !important;}
     #anteprima{position:static;display:block;background:none;}
     .anteprima-barra{display:none !important;}
     .anteprima-corpo{padding:0;overflow:visible;}
     .foglio{width:auto;padding:0;box-shadow:none;}
+    .foglio.foglio-etichetta{width:100mm;height:62mm;margin:0;border-radius:0;}
 }
 </style>
+<!-- Formato di pagina per la stampa: A4 o etichetta 100 × 62 mm (impostato dall'app) -->
+<style id="paginaStampa">@page{size:A4;margin:14mm;}</style>
 </head>
 <body>
 
