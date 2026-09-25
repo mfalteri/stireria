@@ -29,7 +29,18 @@ p{margin:0;line-height:1.5;color:#4B5058;}
 </body>
 </html>`;
 
+/* File del repository che non fanno parte del sito e non vanno pubblicati. */
+const PERCORSI_PRIVATI = [/^\/supabase(\/|$)/i, /^\/functions(\/|$)/i, /^\/readme(\.md)?$/i, /^\/_headers$/i, /^\/\.git/i];
+
 export async function onRequest(context){
+    const percorso = new URL(context.request.url).pathname;
+    if(PERCORSI_PRIVATI.some(r => r.test(percorso))){
+        return new Response("Non trovato", {
+            status: 404,
+            headers: { "Content-Type": "text/plain; charset=utf-8", "X-Robots-Tag": "noindex, nofollow" }
+        });
+    }
+
     const paesi = String(context.env.PAESI_CONSENTITI || PAESI_PREDEFINITI)
         .split(",")
         .map(p => p.trim().toUpperCase())
@@ -50,5 +61,9 @@ export async function onRequest(context){
         });
     }
 
-    return context.next();
+    /* Intestazione di controllo: conferma che il filtro per paese è attivo. */
+    const risposta = await context.next();
+    const conIntestazione = new Response(risposta.body, risposta);
+    conIntestazione.headers.set("X-Stireria-Filtro-Paese", "attivo");
+    return conIntestazione;
 }
