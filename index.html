@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stireria Frequenze</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js" integrity="sha384-K1nraABOP/zFehpLIUksXebbs7jMpB8gYMlb+uhVKZcWT/9Vkq1+qhv6ndC+1Yuz" crossorigin="anonymous"></script>
+<style>
+:root{
+    --bg:#EFF0EC;
+    --surface:#FFFFFF;
+    --surface-2:#F6F7F3;
+    --ink:#16181B;
+    --ink-2:#4B5058;
+    --ink-3:#737982;
+    --line:#DCDFD8;
+    --line-2:#C5C9C0;
+    --accent:#2C47D1;
+    --accent-ink:#FFFFFF;
+    --accent-soft:#E3E7FA;
+    --accent-text:#2439AB;
+    --tag:#F3D64A;
+    --tag-ink:#1D1A08;
+    --ok:#1E7F47;
+    --ok-soft:#DFF1E6;
+    --conferma:#1F7A4D;
+    --conferma-ink:#FFFFFF;
+    --warn:#8A5710;
+    --warn-soft:#F8ECD4;
+    --warn-bar:#E0A12C;
+    --bad:#BC3B33;
+    --bad-soft:#F9E3E1;
+    --track:#E4E6E1;
+    --velo:rgba(20,22,26,.45);
+    --logo-filter:none;
+    --shadow:0 1px 2px rgba(20,24,30,.06), 0 10px 30px -14px rgba(20,24,30,.22);
+    --font:"Archivo","Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+        color-scheme:dark;
+        --bg:#101214;
+        --surface:#1A1D20;
+        --surface-2:#212529;
+        --ink:#ECEEF0;
+        --ink-2:#B4B9C0;
+        --ink-3:#8A9098;
+        --line:#2C3035;
+        --line-2:#3A3F45;
+        --accent:#8196FF;
+        --accent-ink:#0C1033;
+        --accent-soft:#222A4E;
+        --accent-text:#A9B7FF;
+        --tag:#E6C93C;
+        --tag-ink:#1D1A08;
+        --ok:#58C98A;
+        --ok-soft:#16301F;
+    --conferma:#3DA86D;
+    --conferma-ink:#04170C;
+        --warn:#E8B460;
+        --warn-soft:#33280F;
+        --warn-bar:#D99A2B;
+        --bad:#F2857C;
+        --bad-soft:#3A1C1A;
+        --track:#2A2E33;
+        --velo:rgba(0,0,0,.6);
+        --logo-filter:invert(1);
+        --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 30px -14px rgba(0,0,0,.6);
+    }
+}
+:root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#101214;
+    --surface:#1A1D20;
+    --surface-2:#212529;
+    --ink:#ECEEF0;
+    --ink-2:#B4B9C0;
+    --ink-3:#8A9098;
+    --line:#2C3035;
+    --line-2:#3A3F45;
+    --accent:#8196FF;
+    --accent-ink:#0C1033;
+    --accent-soft:#222A4E;
+    --accent-text:#A9B7FF;
+    --tag:#E6C93C;
+    --tag-ink:#1D1A08;
+    --ok:#58C98A;
+    --ok-soft:#16301F;
+    --conferma:#3DA86D;
+    --conferma-ink:#04170C;
+    --warn:#E8B460;
+    --warn-soft:#33280F;
+    --warn-bar:#D99A2B;
+    --bad:#F2857C;
+    --bad-soft:#3A1C1A;
+    --track:#2A2E33;
+    --velo:rgba(0,0,0,.6);
+    --logo-filter:invert(1);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 30px -14px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box;}
+[hidden]{display:none !important;}
+html,body{background:var(--bg);}
+body{
+    margin:0;
+    color:var(--ink);
+    font-family:var(--font);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0;line-height:1.1;text-wrap:balance;}
+p{margin:0;}
+button,input,select{font:inherit;color:inherit;}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.muted{color:var(--ink-2);}
+.eyebrow{
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+}
+.logo{filter:var(--logo-filter);display:block;height:auto;}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px;}
+
+/* ---------- Pulsanti e campi ---------- */
+.btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    min-height:44px;
+    padding:0 18px;
+    border:1px solid var(--line-2);
+    border-radius:10px;
+    background:var(--surface);
+    font-weight:600;
+    text-decoration:none;
+    text-align:center;
+    cursor:pointer;
+    transition:background .15s, border-color .15s, transform .1s;
+}
+.btn:hover{background:var(--surface-2);}
+.btn:active{transform:translateY(1px);}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+.btn-primario{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+.btn-primario:hover{background:var(--accent);filter:brightness(1.08);}
+.btn-piccolo{min-height:34px;padding:0 12px;font-size:13px;border-radius:8px;}
+.btn-pericolo{color:var(--bad);border-color:color-mix(in srgb, var(--bad) 40%, var(--line-2));}
+.btn-pericolo.conferma{background:var(--bad);border-color:var(--bad);color:#fff;}
+.btn-wa{background:#1FA855;border-color:#1FA855;color:#fff;}
+.btn-wa:hover{background:#1FA855;filter:brightness(1.07);}
+.btn-testo{
+    border:0;
+    background:none;
+    padding:6px 8px;
+    color:var(--ink-2);
+    font-weight:600;
+    cursor:pointer;
+    border-radius:6px;
+}
+.btn-testo:hover{color:var(--ink);background:var(--surface-2);}
+
+.campo{display:grid;gap:6px;}
+.campo > span{font-size:13px;font-weight:600;color:var(--ink-2);}
+.campo input{
+    width:100%;
+    min-height:46px;
+    padding:0 14px;
+    border:1px solid var(--line-2);
+    border-radius:10px;
+    background:var(--surface);
+    font-size:16px;
+}
+.campo input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.campo input[aria-invalid="true"]{border-color:var(--bad);}
+.errore{
+    padding:10px 14px;
+    border-radius:10px;
+    background:var(--bad-soft);
+    color:var(--bad);
+    font-weight:600;
+    font-size:14px;
+}
+
+/* Scelta a segmenti (sede, vista, tipo di stampa) */
+.segmenti{
+    display:inline-flex;
+    padding:4px;
+    gap:4px;
+    border-radius:12px;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    flex-wrap:wrap;
+}
+.segmenti button{
+    min-height:36px;
+    padding:0 14px;
+    border:0;
+    border-radius:9px;
+    background:none;
+    font-weight:600;
+    font-size:14px;
+    color:var(--ink-2);
+    cursor:pointer;
+}
+.segmenti button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+
+/* ---------- Login ---------- */
+.login{
+    min-height:100vh;
+    display:grid;
+    place-items:center;
+    padding:32px 16px;
+}
+.login-card{
+    width:100%;
+    max-width:400px;
+    display:grid;
+    gap:20px;
+    padding:32px 28px;
+    background:var(--surface);
+    border-radius:18px;
+    box-shadow:var(--shadow);
+}
+.login-card .logo{width:72px;}
+.login-card h1{
+    font-size:40px;
+    font-weight:800;
+    font-stretch:118%;
+    letter-spacing:-.02em;
+}
+.login-card .nota{font-size:13px;color:var(--ink-3);text-align:center;line-height:1.7;}
+.avviso{
+    position:fixed;
+    left:50%;
+    bottom:calc(env(safe-area-inset-bottom,0px) + 20px);
+    z-index:70;
+    transform:translateX(-50%);
+    max-width:calc(100% - 32px);
+    padding:12px 18px;
+    border-radius:12px;
+    font-weight:600;
+    font-size:14px;
+    box-shadow:0 12px 30px -10px rgba(0,0,0,.35);
+}
+.avviso-ok{background:var(--ink);color:var(--bg);}
+.avviso-errore{background:var(--bad);color:#fff;}
+
+/* ---------- Barra superiore ---------- */
+.barra{
+    position:sticky;
+    top:env(safe-area-inset-top,0px);
+    z-index:10;
+    background:color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+}
+.barra-in{
+    max-width:1180px;
+    margin:0 auto;
+    padding:10px 20px;
+    display:flex;
+    align-items:center;
+    gap:18px;
+    flex-wrap:wrap;
+}
+.marchio{display:flex;align-items:center;gap:12px;}
+.marchio .logo{width:34px;}
+.marchio strong{font-size:19px;font-weight:800;font-stretch:115%;letter-spacing:-.01em;}
+.schede{display:flex;gap:4px;flex:1;min-width:0;}
+.scheda{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    min-height:40px;
+    padding:0 14px;
+    border:0;
+    border-radius:9px;
+    background:none;
+    color:var(--ink-2);
+    font-weight:600;
+    white-space:nowrap;
+    cursor:pointer;
+}
+.scheda:hover{background:var(--surface-2);color:var(--ink);}
+.scheda[aria-selected="true"]{background:var(--accent-soft);color:var(--accent-text);}
+.conteggio{
+    min-width:22px;
+    padding:1px 7px;
+    border-radius:99px;
+    background:var(--accent);
+    color:var(--accent-ink);
+    font-family:var(--mono);
+    font-size:12px;
+    text-align:center;
+}
+.utente{display:flex;align-items:center;gap:10px;}
+.avatar{
+    display:grid;
+    place-items:center;
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    background:var(--ink);
+    color:var(--bg);
+    font-size:13px;
+    font-weight:700;
+}
+.utente-testo{display:grid;line-height:1.2;}
+.utente-testo strong{font-size:14px;}
+.utente-testo span{font-size:12px;color:var(--ink-3);}
+
+/* ---------- Pagina ---------- */
+.pagina{
+    max-width:1180px;
+    margin:0 auto;
+    padding:28px 20px 40px;
+}
+.intesta{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+    margin-bottom:22px;
+}
+.intesta h2{
+    font-size:34px;
+    font-weight:800;
+    font-stretch:115%;
+    letter-spacing:-.02em;
+    margin-top:4px;
+}
+.intesta-azioni{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.pannello{
+    background:var(--surface);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    padding:24px;
+}
+.piede{
+    max-width:1180px;
+    margin:0 auto;
+    padding:0 20px 32px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    color:var(--ink-3);
+    font-size:13px;
+}
+.sede{
+    display:inline-flex;
+    align-items:center;
+    padding:2px 9px;
+    border-radius:6px;
+    font-size:12.5px;
+    font-weight:700;
+    white-space:nowrap;
+    border:1px solid transparent;
+}
+.sede-emporio{background:#EFE6FB;color:#5B2D98;border-color:#E0D0F5;}
+.sede-piazzetta{background:#E0F2F1;color:#0F6660;border-color:#C9E7E4;}
+@media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .sede-emporio{background:#2C2140;color:#CDB2F2;border-color:#3A2C55;}
+    :root:not([data-theme="light"]) .sede-piazzetta{background:#15302E;color:#8DD9D1;border-color:#1F423F;}
+}
+:root[data-theme="dark"] .sede-emporio{background:#2C2140;color:#CDB2F2;border-color:#3A2C55;}
+:root[data-theme="dark"] .sede-piazzetta{background:#15302E;color:#8DD9D1;border-color:#1F423F;}
+
+/* ---------- Nuovo ordine ---------- */
+.griglia-ordine{
+    display:grid;
+    grid-template-columns:minmax(0,1.25fr) minmax(320px,1fr);
+    gap:24px;
+    align-items:start;
+}
+.form-ordine{display:grid;gap:26px;}
+.gruppo{display:grid;gap:14px;border:0;margin:0;padding:0;min-width:0;}
+.gruppo legend{
+    padding:0;
+    margin-bottom:14px;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+}
+.riga2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.capi{display:grid;gap:10px;}
+.capo{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    padding:12px 12px 12px 16px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface-2);
+    transition:border-color .15s, background .15s;
+}
+.capo.attivo{border-color:var(--accent);background:var(--accent-soft);}
+.capo strong{font-size:17px;}
+.stepper{display:flex;align-items:center;gap:6px;}
+.stepper button{
+    width:42px;
+    height:42px;
+    border:1px solid var(--line-2);
+    border-radius:10px;
+    background:var(--surface);
+    font-size:20px;
+    line-height:1;
+    cursor:pointer;
+}
+.stepper button:hover{border-color:var(--accent);color:var(--accent-text);}
+.stepper input{
+    width:64px;
+    height:42px;
+    border:1px solid var(--line-2);
+    border-radius:10px;
+    background:var(--surface);
+    font-family:var(--mono);
+    font-size:18px;
+    font-weight:600;
+    text-align:center;
+    -moz-appearance:textfield;
+}
+.stepper input::-webkit-inner-spin-button,
+.stepper input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+.stepper input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.azioni{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;}
+
+/* Il cartellino di ritiro */
+.ticket{
+    position:sticky;
+    top:calc(env(safe-area-inset-top,0px) + 84px);
+    background:var(--surface);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    overflow:hidden;
+}
+.ticket-testa{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:16px 22px;
+    background:var(--tag);
+    color:var(--tag-ink);
+    font-family:var(--mono);
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+}
+.ticket-testa .occhiello{
+    width:14px;
+    height:14px;
+    border-radius:50%;
+    background:var(--bg);
+    box-shadow:inset 0 0 0 2px rgba(0,0,0,.18);
+}
+.ticket-corpo{padding:20px 22px 22px;display:grid;gap:14px;}
+.ticket-titolo{font-size:18px;font-weight:700;}
+.ticket-vuoto{font-size:16px;font-weight:600;color:var(--ink-3);line-height:1.4;padding:6px 0 4px;}
+
+.giorni-ritiro{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:8px;
+    border:0;
+    margin:0;
+    padding:0;
+}
+.giorno-ritiro{position:relative;display:block;cursor:pointer;}
+.giorno-ritiro input{position:absolute;opacity:0;pointer-events:none;}
+.giorno-ritiro span.casella{
+    display:grid;
+    gap:1px;
+    height:100%;
+    padding:12px 10px 11px;
+    border:1.5px solid var(--line-2);
+    border-radius:12px;
+    background:var(--surface);
+    transition:border-color .15s, background .15s;
+}
+.giorno-ritiro:hover span.casella{border-color:var(--accent);}
+.giorno-ritiro input:focus-visible + span.casella{outline:3px solid var(--accent);outline-offset:2px;}
+.giorno-ritiro input:checked + span.casella{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent);}
+.casella .gs{font-size:13px;font-weight:700;color:var(--ink-2);}
+.casella .dm{
+    font-size:26px;
+    font-weight:800;
+    font-stretch:115%;
+    letter-spacing:-.02em;
+    line-height:1.1;
+    font-variant-numeric:tabular-nums;
+}
+.casella .ora{font-size:11.5px;color:var(--ink-3);line-height:1.3;}
+.giorno-ritiro input:checked + .casella .gs,
+.giorno-ritiro input:checked + .casella .dm{color:var(--accent-text);}
+.primo{
+    position:absolute;
+    top:-8px;
+    right:8px;
+    padding:1px 7px;
+    border-radius:99px;
+    background:var(--tag);
+    color:var(--tag-ink);
+    font-size:10.5px;
+    font-weight:700;
+    letter-spacing:.02em;
+}
+
+/* Conferma ordine: rettangolo verde sotto la scelta del giorno */
+.btn-conferma{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    width:100%;
+    margin-top:4px;
+    padding:14px 18px;
+    border:0;
+    border-radius:12px;
+    background:var(--conferma);
+    color:var(--conferma-ink);
+    text-align:left;
+    cursor:pointer;
+    box-shadow:0 1px 0 rgba(0,0,0,.08), 0 8px 18px -10px var(--conferma);
+    transition:filter .15s, transform .1s;
+}
+.btn-conferma:hover{filter:brightness(1.06);}
+.btn-conferma:active{transform:translateY(1px);}
+.btn-conferma-testo{display:grid;gap:2px;}
+.btn-conferma-testo strong{font-size:18px;font-weight:800;font-stretch:110%;letter-spacing:-.01em;}
+.btn-conferma-testo span{font-size:13px;opacity:.88;}
+.btn-conferma-freccia{
+    display:grid;
+    place-items:center;
+    flex:none;
+    width:36px;
+    height:36px;
+    border-radius:50%;
+    background:rgba(255,255,255,.18);
+    font-size:18px;
+}
+
+.taglio{
+    position:relative;
+    height:0;
+    margin:4px 22px;
+    border-top:2px dashed var(--line-2);
+}
+.taglio::before,
+.taglio::after{
+    content:"";
+    position:absolute;
+    top:-12px;
+    width:22px;
+    height:22px;
+    border-radius:50%;
+    background:var(--bg);
+}
+.taglio::before{left:-34px;}
+.taglio::after{right:-34px;}
+
+.registrato{display:grid;gap:6px;}
+.ticket-data{
+    font-size:clamp(46px,7vw,62px);
+    font-weight:800;
+    font-stretch:120%;
+    letter-spacing:-.03em;
+    line-height:.95;
+    font-variant-numeric:tabular-nums;
+}
+.ticket-data small{font-size:.4em;font-weight:600;color:var(--ink-3);letter-spacing:0;margin-left:6px;}
+.timbro{
+    justify-self:start;
+    padding:5px 12px;
+    border:2px solid var(--ok);
+    border-radius:8px;
+    color:var(--ok);
+    font-family:var(--mono);
+    font-weight:600;
+    font-size:13px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    transform:rotate(-3deg);
+}
+.passi{display:grid;gap:10px;}
+.passi .btn{width:100%;justify-content:flex-start;padding:0 16px;}
+.passi .btn .n{
+    display:grid;
+    place-items:center;
+    width:24px;
+    height:24px;
+    border-radius:50%;
+    background:rgba(255,255,255,.22);
+    font-family:var(--mono);
+    font-size:12px;
+}
+.passi .btn:not(.btn-wa):not(.btn-primario) .n{background:var(--surface-2);border:1px solid var(--line);}
+.passi .btn .fatto-segno{margin-left:auto;font-size:12.5px;font-weight:600;opacity:.85;}
+
+/* ---------- Ordini ---------- */
+.kpi{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:14px;
+    margin-bottom:22px;
+}
+.kpi-voce{
+    padding:16px 18px;
+    border-radius:14px;
+    background:var(--surface);
+    box-shadow:var(--shadow);
+    display:grid;
+    gap:4px;
+}
+.kpi-voce span{font-size:13px;color:var(--ink-2);font-weight:600;}
+.kpi-voce strong{
+    font-size:28px;
+    font-weight:800;
+    font-stretch:112%;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:-.01em;
+}
+.kpi-voce small{font-size:12.5px;color:var(--ink-3);}
+.strumenti{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    margin-bottom:14px;
+}
+.cerca{flex:1 1 240px;max-width:340px;}
+.filtri-gruppo{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.filtri{display:flex;gap:6px;flex-wrap:wrap;}
+.filtro{
+    min-height:36px;
+    padding:0 14px;
+    border:1px solid var(--line-2);
+    border-radius:99px;
+    background:var(--surface);
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink-2);
+    cursor:pointer;
+}
+.filtro[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg);}
+.separatore{width:1px;height:24px;background:var(--line-2);}
+.tabella-wrap{
+    overflow-x:auto;
+    background:var(--surface);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+}
+.tabella{width:100%;border-collapse:collapse;min-width:900px;}
+.tabella th{
+    padding:12px 14px;
+    text-align:left;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+}
+.tabella td{padding:14px;border-bottom:1px solid var(--line);vertical-align:middle;}
+.tabella tbody tr:last-child td{border-bottom:0;}
+.tabella tbody tr:hover td{background:var(--surface-2);}
+.num{font-family:var(--mono);font-size:13px;color:var(--ink-3);}
+.cliente strong{display:block;font-weight:600;}
+.cliente span{font-family:var(--mono);font-size:12.5px;color:var(--ink-3);}
+.chips{display:flex;gap:6px;flex-wrap:wrap;}
+.chip{
+    padding:2px 9px;
+    border-radius:6px;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    font-size:13px;
+    white-space:nowrap;
+}
+.chip b{font-family:var(--mono);font-weight:600;}
+.data-cella{white-space:nowrap;font-variant-numeric:tabular-nums;}
+.sotto{display:block;font-size:12px;color:var(--ink-3);}
+.ritardo{display:block;font-size:12px;color:var(--warn);font-weight:600;}
+.stato{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:3px 10px;
+    border-radius:99px;
+    font-size:12.5px;
+    font-weight:600;
+    white-space:nowrap;
+}
+.stato::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;}
+.stato-lavorazione{background:var(--accent-soft);color:var(--accent-text);}
+.stato-pronto{background:var(--ok-soft);color:var(--ok);}
+.stato-ritirato{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line);}
+.azioni-riga{display:flex;gap:6px;justify-content:flex-end;flex-wrap:nowrap;}
+.vuoto{padding:40px 16px;text-align:center;color:var(--ink-3);}
+
+/* ---------- Piano ---------- */
+.nav-sett{display:flex;gap:6px;align-items:center;}
+.nav-sett .btn{min-width:44px;padding:0 12px;}
+.barra-piano{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+}
+.griglia-piano{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 300px;
+    gap:24px;
+    align-items:start;
+}
+.riepilogo{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:14px;
+    margin-bottom:22px;
+}
+.giorni{width:100%;border-collapse:collapse;min-width:640px;}
+.giorni th{
+    padding:0 10px 12px;
+    text-align:left;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+}
+.giorni th.n, .giorni td.n{text-align:right;}
+.giorni td{padding:14px 10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+.giorni tbody tr:last-child td{border-bottom:0;}
+.giorni tr.oggi td{background:var(--accent-soft);}
+.giorni tr.oggi td:first-child{border-radius:10px 0 0 10px;}
+.giorni tr.oggi td:last-child{border-radius:0 10px 10px 0;}
+.giorno-nome strong{display:block;font-weight:700;}
+.giorno-nome span{font-size:12.5px;color:var(--ink-3);font-family:var(--mono);}
+.giorni .n{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.turni-input{
+    width:64px;
+    height:38px;
+    border:1px solid var(--line-2);
+    border-radius:8px;
+    background:var(--surface);
+    font-family:var(--mono);
+    font-size:16px;
+    font-weight:600;
+    text-align:center;
+}
+.turni-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.utilizzo{display:grid;gap:5px;min-width:150px;}
+.utilizzo-testo{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-3);font-family:var(--mono);}
+.utilizzo-testo b{color:var(--ink);font-weight:600;}
+.barra-uso{height:10px;border-radius:99px;background:var(--track);overflow:hidden;}
+.barra-uso i{display:block;height:100%;border-radius:99px;transition:width .3s ease;}
+.uso-ok{background:var(--ok);}
+.uso-medio{background:var(--warn-bar);}
+.uso-pieno{background:var(--bad);}
+.impostazioni{display:grid;gap:18px;}
+.impostazioni h3{font-size:18px;font-weight:700;}
+.impostazioni .campo input{min-height:42px;font-family:var(--mono);}
+.suffisso{position:relative;}
+.suffisso input{padding-right:52px;}
+.suffisso em{
+    position:absolute;
+    right:14px;
+    top:50%;
+    transform:translateY(-50%);
+    font-style:normal;
+    font-size:13px;
+    color:var(--ink-3);
+    pointer-events:none;
+}
+.formula{
+    padding:12px 14px;
+    border-radius:10px;
+    background:var(--surface-2);
+    font-size:13px;
+    color:var(--ink-2);
+}
+.formula b{font-family:var(--mono);color:var(--ink);}
+
+/* Consegne della settimana */
+.consegne{
+    display:grid;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:12px;
+    align-items:start;
+}
+.colonna{
+    display:grid;
+    gap:8px;
+    padding:12px;
+    border-radius:14px;
+    background:var(--surface);
+    box-shadow:var(--shadow);
+}
+.colonna.oggi{box-shadow:0 0 0 2px var(--accent), var(--shadow);}
+.colonna-testa{display:flex;justify-content:space-between;align-items:baseline;padding:2px 4px 6px;border-bottom:1px solid var(--line);}
+.colonna-testa strong{font-size:15px;}
+.colonna-testa span{font-family:var(--mono);font-size:12.5px;color:var(--ink-3);}
+.consegna{
+    display:grid;
+    gap:6px;
+    padding:10px 11px;
+    border-radius:10px;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+}
+.consegna-testa{display:flex;justify-content:space-between;gap:8px;align-items:center;}
+.consegna-testa strong{font-size:14px;line-height:1.25;}
+.consegna .num{font-size:12px;}
+.consegna .chips .chip{font-size:12px;padding:1px 7px;background:var(--surface);}
+.consegna-piede{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.colonna-vuota{font-size:13px;color:var(--ink-3);padding:8px 4px;}
+
+/* ---------- Finestre ---------- */
+.velo{
+    position:fixed;
+    inset:0;
+    z-index:50;
+    display:grid;
+    place-items:center;
+    padding:16px;
+    background:var(--velo);
+}
+.dialogo{
+    width:100%;
+    max-width:440px;
+    display:grid;
+    gap:16px;
+    padding:26px;
+    border-radius:18px;
+    background:var(--surface);
+    box-shadow:0 30px 60px -20px rgba(0,0,0,.45);
+}
+.dialogo h3{font-size:21px;font-weight:800;font-stretch:108%;}
+.dialogo .azioni .btn{min-width:110px;}
+.scelta-giorni{display:flex;gap:6px;flex-wrap:wrap;}
+
+.anteprima{
+    position:fixed;
+    inset:0;
+    z-index:60;
+    display:grid;
+    grid-template-rows:auto 1fr;
+    background:var(--velo);
+}
+.anteprima-barra{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 20px 12px;
+    background:var(--surface);
+    border-bottom:1px solid var(--line);
+}
+.anteprima-barra strong{font-size:16px;}
+.anteprima-barra .nota{font-size:12.5px;color:var(--ink-3);}
+.anteprima-corpo{overflow:auto;padding:28px 16px 48px;}
+
+/* Il foglio stampabile: sempre bianco, come la carta */
+.foglio{
+    width:794px;
+    max-width:100%;
+    margin:0 auto;
+    padding:48px 52px;
+    background:#fff;
+    color:#141414;
+    font-family:var(--font);
+    font-size:13px;
+    line-height:1.45;
+    box-shadow:0 20px 50px -20px rgba(0,0,0,.5);
+}
+.doc-testa{display:flex;align-items:center;gap:18px;padding-bottom:18px;border-bottom:2px solid #141414;}
+.doc-testa img{width:58px;height:auto;}
+.doc-testa .ente{display:grid;line-height:1.3;}
+.doc-testa .ente strong{font-size:15px;font-weight:800;font-stretch:112%;letter-spacing:.01em;}
+.doc-testa .ente span{color:#555;}
+.doc-testa .riferimento{margin-left:auto;text-align:right;display:grid;line-height:1.3;}
+.doc-testa .riferimento span{color:#555;font-size:11px;letter-spacing:.08em;text-transform:uppercase;}
+.doc-testa .riferimento b{font-family:var(--mono);font-size:18px;}
+.foglio h1{font-size:28px;font-weight:800;font-stretch:115%;letter-spacing:-.01em;margin:26px 0 4px;}
+.foglio h2{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:26px 0 10px;color:#333;}
+.foglio .sottotitolo{color:#555;}
+.doc-kv{display:grid;grid-template-columns:150px 1fr;gap:6px 16px;margin-top:20px;}
+.doc-kv dt{color:#555;}
+.doc-kv dd{margin:0;font-weight:600;}
+.doc-tab{width:100%;border-collapse:collapse;}
+.doc-tab th{
+    text-align:left;
+    font-size:10.5px;
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    color:#555;
+    padding:7px 8px;
+    border-bottom:1.5px solid #141414;
+}
+.doc-tab td{padding:8px;border-bottom:1px solid #d6d6d6;vertical-align:top;}
+.doc-tab .n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.doc-tab tfoot td{border-bottom:0;border-top:1.5px solid #141414;font-weight:700;}
+.doc-tab .spunta{width:18px;height:18px;border:1.5px solid #141414;border-radius:3px;display:inline-block;}
+.doc-tab .piccolo{display:block;color:#666;font-size:11px;}
+.doc-ritiro{
+    display:grid;
+    gap:2px;
+    margin-top:26px;
+    padding:18px 20px;
+    border:2px solid #141414;
+    border-radius:10px;
+}
+.doc-ritiro span{color:#555;}
+.doc-ritiro strong{font-size:24px;font-weight:800;font-stretch:112%;}
+.doc-nota{margin-top:22px;color:#555;font-size:12px;}
+.doc-firma{display:flex;gap:40px;margin-top:40px;}
+.doc-firma div{flex:1;border-top:1px solid #141414;padding-top:6px;color:#555;font-size:11.5px;}
+.doc-giorno{break-inside:avoid;margin-top:22px;}
+.doc-giorno h3{font-size:15px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;}
+.doc-giorno h3 span{font-family:var(--mono);font-weight:500;font-size:12px;color:#555;}
+
+@media (max-width:960px){
+    .griglia-ordine,
+    .griglia-piano{grid-template-columns:1fr;}
+    .ticket{position:static;}
+    .kpi,
+    .riepilogo{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .consegne{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media (max-width:640px){
+    .barra-in{padding:10px 16px;gap:10px;}
+    .schede{order:3;flex-basis:100%;overflow-x:auto;padding-bottom:2px;}
+    .utente{margin-left:auto;}
+    .pagina{padding:20px 16px 32px;}
+    .piede{padding:0 16px 28px;}
+    .intesta h2{font-size:28px;}
+    .pannello{padding:18px;}
+    .riga2{grid-template-columns:1fr;}
+    .capo{padding:10px 10px 10px 14px;}
+    .capo strong{font-size:16px;}
+    .stepper input{width:54px;}
+    .stepper button{width:40px;height:40px;}
+    .kpi-voce strong{font-size:23px;}
+    .azioni .btn{flex:1 1 auto;}
+    .consegne{grid-template-columns:1fr;}
+    .casella .dm{font-size:22px;}
+    .foglio{padding:28px 20px;}
+    .doc-kv{grid-template-columns:110px 1fr;}
+}
+@media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+}
+
+/* Stampa: solo il foglio */
+@media print{
+    @page{size:A4;margin:14mm;}
+    html,body{background:#fff !important;}
+    body > *:not(#anteprima){display:none !important;}
+    #anteprima{position:static;display:block;background:none;}
+    .anteprima-barra{display:none !important;}
+    .anteprima-corpo{padding:0;overflow:visible;}
+    .foglio{width:auto;padding:0;box-shadow:none;}
+}
+</style>
+</head>
+<body>
+
+
+<!-- ============ Accesso ============ -->
+<main id="schermoLogin" class="login">
+    <form id="formLogin" class="login-card" novalidate>
+        <img class="logo" data-logo alt="Frequenze">
+        <div style="display:grid;gap:8px;">
+            <p class="eyebrow">Associazione Frequenze</p>
+            <h1>Stireria</h1>
+            <p class="muted">Accedi per registrare gli ordini e seguire le consegne.</p>
+        </div>
+        <label class="campo">
+            <span>Utente</span>
+            <input id="loginUtente" autocomplete="username" autocapitalize="none" spellcheck="false">
+        </label>
+        <label class="campo">
+            <span>Password</span>
+            <input id="loginPassword" type="password" autocomplete="current-password">
+        </label>
+        <p id="loginErrore" class="errore" hidden></p>
+        <button class="btn btn-primario" type="submit">Accedi</button>
+    </form>
+</main>
+
+<!-- ============ Applicazione ============ -->
+<div id="app" hidden>
+    <header class="barra">
+        <div class="barra-in">
+            <div class="marchio">
+                <img class="logo" data-logo alt="Frequenze">
+                <strong>Stireria</strong>
+            </div>
+            <nav class="schede" role="tablist" aria-label="Sezioni">
+                <button class="scheda" role="tab" data-vista="nuovo" id="tab-nuovo">Nuovo ordine</button>
+                <button class="scheda" role="tab" data-vista="ordini" id="tab-ordini">Ordini <span id="badgeOrdini" class="conteggio"></span></button>
+                <button class="scheda" role="tab" data-vista="piano" id="tab-piano">Piano settimanale</button>
+            </nav>
+            <div class="utente">
+                <span class="avatar" id="avatar" aria-hidden="true"></span>
+                <span class="utente-testo"><strong id="utenteNome"></strong><span id="utenteRuolo"></span></span>
+                <button id="esci" class="btn-testo" type="button">Esci</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="pagina">
+
+        <!-- Nuovo ordine -->
+        <section id="vista-nuovo" role="tabpanel" aria-labelledby="tab-nuovo">
+            <div class="intesta">
+                <div>
+                    <p class="eyebrow" id="oggiTesto"></p>
+                    <h2>Nuovo ordine</h2>
+                </div>
+            </div>
+
+            <div class="griglia-ordine">
+                <form id="formOrdine" class="pannello form-ordine" novalidate>
+                    <fieldset class="gruppo" id="gruppoSede">
+                        <legend>Sede di consegna</legend>
+                        <div class="segmenti" id="sceltaSede" role="group" aria-label="Sede di consegna">
+                            <button type="button" data-sede="emporio" aria-pressed="true">Emporio</button>
+                            <button type="button" data-sede="piazzetta" aria-pressed="false">Piazzetta</button>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="gruppo">
+                        <legend>Cliente</legend>
+                        <div class="riga2">
+                            <label class="campo">
+                                <span>Nome</span>
+                                <input id="nome" autocomplete="off">
+                            </label>
+                            <label class="campo">
+                                <span>Cognome</span>
+                                <input id="cognome" autocomplete="off">
+                            </label>
+                        </div>
+                        <label class="campo">
+                            <span>Telefono (per WhatsApp)</span>
+                            <input id="telefono" type="tel" inputmode="tel" placeholder="+41 79 123 45 67" autocomplete="off">
+                        </label>
+                    </fieldset>
+
+                    <fieldset class="gruppo">
+                        <legend>Capi consegnati</legend>
+                        <div class="capi" id="capi"></div>
+                    </fieldset>
+
+                    <p id="erroreOrdine" class="errore" hidden></p>
+
+                    <div class="azioni">
+                        <button type="button" id="svuota" class="btn">Svuota campi</button>
+                    </div>
+                </form>
+
+                <aside class="ticket" id="ticket" aria-live="polite"></aside>
+            </div>
+        </section>
+
+        <!-- Ordini -->
+        <section id="vista-ordini" role="tabpanel" aria-labelledby="tab-ordini" hidden>
+            <div class="intesta">
+                <div>
+                    <p class="eyebrow" id="ordiniAmbito"></p>
+                    <h2>Ordini</h2>
+                </div>
+            </div>
+
+            <div class="kpi" id="kpi"></div>
+
+            <div class="strumenti">
+                <label class="campo cerca">
+                    <input id="cerca" type="search" placeholder="Cerca per nome, telefono o numero" aria-label="Cerca ordini">
+                </label>
+                <div class="filtri-gruppo">
+                    <div class="filtri" id="filtriSede" role="group" aria-label="Filtra per sede">
+                        <button class="filtro" data-sede="tutte" aria-pressed="true">Tutte le sedi</button>
+                        <button class="filtro" data-sede="emporio" aria-pressed="false">Emporio</button>
+                        <button class="filtro" data-sede="piazzetta" aria-pressed="false">Piazzetta</button>
+                    </div>
+                    <span class="separatore" id="separatoreFiltri"></span>
+                    <div class="filtri" id="filtriStato" role="group" aria-label="Filtra per stato">
+                        <button class="filtro" data-stato="tutti" aria-pressed="true">Tutti</button>
+                        <button class="filtro" data-stato="lavorazione" aria-pressed="false">In lavorazione</button>
+                        <button class="filtro" data-stato="pronto" aria-pressed="false">Pronti</button>
+                        <button class="filtro" data-stato="ritirato" aria-pressed="false">Ritirati</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tabella-wrap">
+                <table class="tabella">
+                    <thead>
+                        <tr>
+                            <th>N°</th>
+                            <th>Sede</th>
+                            <th>Cliente</th>
+                            <th>Capi</th>
+                            <th>Consegna</th>
+                            <th>Ritiro</th>
+                            <th>Stato</th>
+                            <th><span hidden>Azioni</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="righeOrdini"></tbody>
+                </table>
+                <p id="nessunOrdine" class="vuoto" hidden>Nessun ordine corrisponde alla ricerca.</p>
+            </div>
+        </section>
+
+        <!-- Piano settimanale -->
+        <section id="vista-piano" role="tabpanel" aria-labelledby="tab-piano" hidden>
+            <div class="intesta">
+                <div>
+                    <p class="eyebrow" id="intervalloSettimana"></p>
+                    <h2 id="titoloSettimana"></h2>
+                </div>
+                <div class="nav-sett">
+                    <button class="btn" id="settPrec" type="button" aria-label="Settimana precedente">‹</button>
+                    <button class="btn" id="settOggi" type="button">Questa settimana</button>
+                    <button class="btn" id="settSucc" type="button" aria-label="Settimana successiva">›</button>
+                </div>
+            </div>
+
+            <div class="barra-piano" id="barraPianoAdmin">
+                <div class="segmenti" id="sceltaPiano" role="group" aria-label="Vista del piano">
+                    <button type="button" data-piano="carico" aria-pressed="true">Carico stireria</button>
+                    <button type="button" data-piano="consegne" aria-pressed="false">Consegne alle sedi</button>
+                </div>
+                <button class="btn btn-primario" id="apriStampaPiano" type="button">Stampa piano di lavoro</button>
+            </div>
+
+            <!-- Carico della stireria (solo admin) -->
+            <div id="pianoCarico">
+                <div class="riepilogo" id="riepilogo"></div>
+                <div class="griglia-piano">
+                    <div class="pannello" style="overflow-x:auto;">
+                        <table class="giorni">
+                            <thead>
+                                <tr>
+                                    <th>Giorno</th>
+                                    <th>Turni (4 ore)</th>
+                                    <th class="n">Camicie</th>
+                                    <th class="n">Lenzuola</th>
+                                    <th class="n">Ceste</th>
+                                    <th class="n">Arrivato</th>
+                                    <th>Utilizzo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="righeGiorni"></tbody>
+                        </table>
+                    </div>
+
+                    <aside class="pannello impostazioni">
+                        <h3>Tempi di stiratura</h3>
+                        <label class="campo">
+                            <span>Camicia</span>
+                            <div class="suffisso"><input id="tempoCamicia" type="number" min="0" inputmode="numeric"><em>min</em></div>
+                        </label>
+                        <label class="campo">
+                            <span>Lenzuolo</span>
+                            <div class="suffisso"><input id="tempoLenzuolo" type="number" min="0" inputmode="numeric"><em>min</em></div>
+                        </label>
+                        <label class="campo">
+                            <span>Cesta</span>
+                            <div class="suffisso"><input id="tempoCesta" type="number" min="0" inputmode="numeric"><em>min</em></div>
+                        </label>
+                        <label class="campo">
+                            <span>Turni predefiniti al giorno</span>
+                            <div class="suffisso"><input id="turniDefault" type="number" min="0" inputmode="numeric"><em>turni</em></div>
+                        </label>
+                        <p class="formula">Ogni turno vale <b>225 min</b> di stiratura. I capi arrivati oggi si lavorano dal giorno lavorativo successivo, in ordine di arrivo; al ritiro si aggiungono <b>2 giorni</b> di margine.</p>
+                    </aside>
+                </div>
+            </div>
+
+            <!-- Consegne alle sedi -->
+            <div id="pianoConsegne" hidden>
+                <div class="barra-piano" id="barraSedeConsegne">
+                    <div class="filtri" id="filtriSedeConsegne" role="group" aria-label="Sede">
+                        <button class="filtro" data-sede="tutte" aria-pressed="true">Tutte le sedi</button>
+                        <button class="filtro" data-sede="emporio" aria-pressed="false">Emporio</button>
+                        <button class="filtro" data-sede="piazzetta" aria-pressed="false">Piazzetta</button>
+                    </div>
+                </div>
+                <div class="consegne" id="consegne"></div>
+            </div>
+        </section>
+    </main>
+
+</div>
+
+<div id="avviso" class="avviso" role="status" aria-live="polite" hidden></div>
+
+<!-- ============ Domanda sì / no ============ -->
+<div id="dialogo" class="velo" hidden>
+    <div class="dialogo" role="dialog" aria-modal="true" aria-labelledby="dialogoTitolo">
+        <h3 id="dialogoTitolo"></h3>
+        <p id="dialogoTesto" class="muted"></p>
+        <div class="azioni" id="dialogoAzioni"></div>
+    </div>
+</div>
+
+<!-- ============ Scelta stampa piano di lavoro ============ -->
+<div id="sceltaStampa" class="velo" hidden>
+    <div class="dialogo" role="dialog" aria-modal="true" aria-labelledby="stampaTitolo">
+        <h3 id="stampaTitolo">Stampa piano di lavoro</h3>
+        <div class="segmenti" id="tipoStampa" role="group" aria-label="Tipo di piano">
+            <button type="button" data-tipo="giorno" aria-pressed="true">Giornaliero</button>
+            <button type="button" data-tipo="settimana" aria-pressed="false">Settimanale</button>
+        </div>
+        <div id="sceltaGiornoStampa" style="display:grid;gap:8px;">
+            <span class="eyebrow">Giorno</span>
+            <div class="scelta-giorni" id="giorniStampa"></div>
+        </div>
+        <p class="muted" id="descrizioneStampa"></p>
+        <div class="azioni">
+            <button class="btn" type="button" id="annullaStampa">Annulla</button>
+            <button class="btn btn-primario" type="button" id="creaStampa">Crea piano</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ Anteprima documento (PDF / stampa) ============ -->
+<div id="anteprima" class="anteprima" hidden>
+    <div class="anteprima-barra">
+        <div style="display:grid;">
+            <strong id="anteprimaTitolo"></strong>
+            <span class="nota" id="anteprimaNota"></span>
+        </div>
+        <div class="azioni">
+            <button class="btn" type="button" id="chiudiAnteprima">Chiudi</button>
+            <button class="btn" type="button" id="scaricaPdf">Scarica PDF</button>
+            <button class="btn btn-primario" type="button" id="stampaDoc">Stampa</button>
+        </div>
+    </div>
+    <div class="anteprima-corpo">
+        <div class="foglio" id="foglio"></div>
+    </div>
+</div>
+
+<script src="app.js" defer></script>
+
+</body>
+</html>

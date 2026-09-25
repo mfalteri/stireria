@@ -1,0 +1,10 @@
+# Sistema operativo
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Strumenti locali
+.wrangler/
+node_modules/
+.env
+.env.*
