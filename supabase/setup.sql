@@ -113,7 +113,7 @@ create table if not exists public.ordini (
     constraint ritiro_dopo_consegna check (ritiro > data)
 );
 
--- Numeri svizzeri scritti senza prefisso (079…) salvati come 4179…, come li vuole WhatsApp.
+-- Numeri svizzeri scritti senza prefisso (079…) salvati in formato internazionale (4179…).
 create or replace function public.normalizza_telefono(t text) returns text
 language sql immutable set search_path = public
 as $$
@@ -140,10 +140,6 @@ drop trigger if exists prepara_ordine on public.ordini;
 create trigger prepara_ordine
 before insert on public.ordini
 for each row execute function public.prepara_ordine();
-
--- Consenso del cliente a ricevere messaggi WhatsApp
-alter table public.ordini
-    add column if not exists consenso_whatsapp boolean not null default false;
 
 create index if not exists ordini_data   on public.ordini (data);
 create index if not exists ordini_ritiro on public.ordini (ritiro);

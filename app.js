@@ -8,7 +8,6 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const MINUTI_TURNO = 225;
 const ORA_RITIRO = "a partire dalle 14.00";
-const LINK_RECENSIONE = "https://share.google/20kCR8PSvtmUFXZ5H";
 const GIORNI_SCELTA_RITIRO = 6;       // primo giorno possibile + 5 successivi
 const CONFIG_PREDEFINITA = { tempoCamicia:25, tempoLenzuolo:20, tempoCesta:360, turniDefault:6 };
 const AGGIORNAMENTO_MS = 30000;       // ricarica periodica dei dati
@@ -465,7 +464,6 @@ let ordineRegistrato = null;
 let ritiroScelto = null;
 let etichettaAperta = false;
 let ricevutaAperta = false;
-let whatsappInviato = false;
 
 function disegnaCapi(){
     $("#capi").innerHTML = CAPI.map(c => `
@@ -495,7 +493,7 @@ function capiInseriti(){
 }
 
 /*
-Numero in formato internazionale senza "+", come lo vuole WhatsApp.
+Numero in formato internazionale senza "+".
 I numeri svizzeri si possono scrivere senza prefisso:
   079 123 45 67  /  +41 79 123 45 67  /  +41 (0)79 123 45 67  /  0041 79 …  →  41791234567
 */
@@ -520,55 +518,6 @@ function controllaTelefono(n){
 const chipsCapi = o => CAPI.filter(c => o[c.k] > 0)
     .map(c => `<span class="chip"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}</span>`).join("");
 
-function messaggioWhatsApp(o){
-    return [
-        "Buongiorno " + o.nome + " " + o.cognome + ",",
-        "",
-        "Ci ha richiesto di stirare:",
-        ...CAPI.filter(c => o[c.k] > 0).map(c => "- " + c.nome + ": " + o[c.k]),
-        "",
-        "Data ritiro: " + dataLunga(daISO(o.ritiro)) + ", " + ORA_RITIRO,
-        "Presso: " + SEDI[o.sede],
-        "",
-        "Grazie, Associazione Frequenze."
-    ].join("\n");
-}
-
-/* Messaggio quando i capi sono pronti per il ritiro. */
-function messaggioPronto(o){
-    return [
-        "Buongiorno " + o.nome + " " + o.cognome + ",",
-        "",
-        "i suoi capi sono pronti (ordine N° " + numeroOrdine(o.id) + "):",
-        ...CAPI.filter(c => o[c.k] > 0).map(c => "- " + c.nome + ": " + o[c.k]),
-        "",
-        "Può ritirarli presso la sede " + SEDI[o.sede] + ", a partire dalle 14.00.",
-        "",
-        "Grazie, Associazione Frequenze."
-    ].join("\n");
-}
-
-/* Messaggio di ringraziamento dopo il ritiro, con l'invito a lasciare una recensione. */
-function messaggioRitirato(o){
-    return [
-        "Buongiorno " + o.nome + " " + o.cognome + ",",
-        "",
-        "grazie per aver scelto la stireria dell'Associazione Frequenze: il suo ordine N° " + numeroOrdine(o.id) + " è stato ritirato.",
-        "",
-        "Se è rimasto soddisfatto del servizio, può lasciarci una recensione qui:",
-        LINK_RECENSIONE,
-        "",
-        "A presto!",
-        "Associazione Frequenze"
-    ].join("\n");
-}
-
-const linkWhatsApp = (o, testo) =>
-    "https://wa.me/" + normalizzaTelefono(o.telefono) + "?text=" + encodeURIComponent(testo);
-
-/* Messaggi già aperti in questa sessione, per segnarli con ✓ nel registro. */
-const whatsappAperti = new Set();
-
 function testaTicket(numero, sede){
     return `<div class="ticket-testa"><span>N° ${numero ? numeroOrdine(numero) : "—"}</span><span>Ritiro · ${SEDI[sede]}</span><span class="occhiello"></span></div>`;
 }
@@ -591,26 +540,16 @@ function aggiornaTicket(){
             </div>
             <div class="taglio"></div>
             <div class="ticket-corpo passi">
-                ${o.consenso_whatsapp ? `
-                <a class="btn btn-wa" id="inviaWhatsApp" href="https://wa.me/${esc(normalizzaTelefono(o.telefono))}?text=${encodeURIComponent(messaggioWhatsApp(o))}" target="_blank" rel="noopener">
-                    <span class="n">1</span>Invia conferma su WhatsApp${whatsappInviato ? '<span class="fatto-segno">Aperto ✓</span>' : ""}
-                </a>` : `
-                <button class="btn" type="button" disabled title="Il cliente non ha dato il consenso ai messaggi WhatsApp">
-                    <span class="n">1</span>WhatsApp non consentito dal cliente
-                </button>`}
                 <button class="btn" type="button" id="stampaEtichetta">
-                    <span class="n">2</span>Stampa etichetta${etichettaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
+                    <span class="n">1</span>Stampa etichetta${etichettaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
                 </button>
                 <button class="btn" type="button" id="stampaRicevuta">
-                    <span class="n">3</span>Stampa ricevuta${ricevutaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
+                    <span class="n">2</span>Stampa ricevuta${ricevutaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
                 </button>
                 <button class="btn btn-primario" type="button" id="confermaChiudi">
-                    <span class="n">4</span>Conferma e chiudi
+                    <span class="n">3</span>Conferma e chiudi
                 </button>
             </div>`;
-        if(o.consenso_whatsapp){
-            $("#inviaWhatsApp").addEventListener("click", () => { whatsappInviato = true; setTimeout(aggiornaTicket, 300); });
-        }
         $("#stampaEtichetta").addEventListener("click", () => apriConferma(ordineRegistrato));
         $("#stampaRicevuta").addEventListener("click", () => apriRicevuta(ordineRegistrato));
         $("#confermaChiudi").addEventListener("click", confermaEChiudi);
@@ -712,8 +651,7 @@ $("#formOrdine").addEventListener("submit", async e => {
         data: dataISO(giornoDeposito(oggi())),
         sede: utente.sede || sedeOrdine,
         nome, cognome, telefono, ...capi,
-        ritiro: ritiroScelto,
-        consenso_whatsapp: $("#consensoWhatsApp").checked
+        ritiro: ritiroScelto
     }).select().single();
 
     if(error){
@@ -729,11 +667,10 @@ $("#formOrdine").addEventListener("submit", async e => {
     ordineRegistrato = ordine;
     etichettaAperta = false;
     ricevutaAperta = false;
-    whatsappInviato = false;
     bloccaModulo(true);
     aggiornaTicket();
     aggiornaBadge();
-    ($("#inviaWhatsApp") || $("#stampaEtichetta")).focus();
+    $("#stampaEtichetta").focus();
 });
 
 function bloccaModulo(bloccato){
@@ -745,7 +682,6 @@ function nuovoOrdine(mettiFuoco = true){
     ritiroScelto = null;
     bloccaModulo(false);
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
-    $("#consensoWhatsApp").checked = false;
     CAPI.forEach(c => $("#" + c.k).value = 0);
     mostraErroreOrdine("");
     aggiornaTicket();
@@ -815,25 +751,17 @@ function disegnaOrdini(){
             o.stato === "lavorazione" ? ["pronto","Segna pronto"] :
             o.stato === "pronto" ? ["ritirato","Consegnato al cliente"] :
             null;
-        /* Messaggio WhatsApp adatto allo stato, solo se il cliente ha dato il consenso. */
-        const messaggio =
-            !o.consenso_whatsapp ? null :
-            o.stato === "pronto" ? ["pronto", "WhatsApp: capi pronti", messaggioPronto(o)] :
-            o.stato === "ritirato" ? ["ritirato", "WhatsApp: grazie", messaggioRitirato(o)] :
-            null;
-        const aperto = messaggio && whatsappAperti.has(o.id + "-" + messaggio[0]);
         return `
             <tr>
                 <td class="num">#${numeroOrdine(o.id)}</td>
                 <td>${badgeSede(o.sede)}</td>
-                <td class="cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span>+${esc(o.telefono)}${o.consenso_whatsapp ? " · WhatsApp" : ""}</span></td>
+                <td class="cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span>${esc(telefonoLeggibile(o.telefono))}</span></td>
                 <td><div class="chips">${chipsCapi(o)}</div></td>
                 <td class="data-cella">${dataBreve(daISO(o.data))}<span class="sotto">ore ${o.creato.slice(11)}</span></td>
                 <td class="data-cella">${dataBreve(daISO(o.ritiro))}${inRitardo ? '<span class="ritardo">Oltre la data prevista</span>' : '<span class="sotto">dalle 14.00</span>'}</td>
                 <td><span class="stato stato-${o.stato}">${STATI[o.stato]}</span></td>
                 <td>
                     <div class="azioni-riga">
-                        ${messaggio ? `<a class="btn btn-piccolo btn-wa" href="${esc(linkWhatsApp(o, messaggio[2]))}" target="_blank" rel="noopener" data-whatsapp="${o.id}-${messaggio[0]}">${messaggio[1]}${aperto ? " ✓" : ""}</a>` : ""}
                         ${avanti ? `<button class="btn btn-piccolo" data-avanza="${o.id}" data-stato="${avanti[0]}">${avanti[1]}</button>` : ""}
                         <button class="btn btn-piccolo" data-conferma="${o.id}">Etichetta</button>
                         <button class="btn btn-piccolo" data-ricevuta="${o.id}">Ricevuta</button>
@@ -851,14 +779,6 @@ $("#righeOrdini").addEventListener("click", async e => {
     const avanza = e.target.closest("[data-avanza]");
     const pdf = e.target.closest("[data-conferma]");
     const elimina = e.target.closest("[data-elimina]");
-    const whatsapp = e.target.closest("[data-whatsapp]");
-
-    if(whatsapp){
-        /* Il link si apre normalmente; qui si segna solo il ✓. */
-        whatsappAperti.add(whatsapp.dataset.whatsapp);
-        setTimeout(disegnaOrdini, 300);
-        return;
-    }
 
     if(avanza){
         const id = Number(avanza.dataset.avanza);
@@ -871,8 +791,7 @@ $("#righeOrdini").addEventListener("click", async e => {
         const ordine = db.ordini.find(x => x.id === id);
         ordine.stato = avanza.dataset.stato;
         disegnaOrdini();
-        avvisa("Ordine #" + numeroOrdine(id) + ": " + STATI[ordine.stato].toLowerCase() +
-            (ordine.consenso_whatsapp ? " · ora puoi scrivere al cliente su WhatsApp" : ""));
+        avvisa("Ordine #" + numeroOrdine(id) + ": " + STATI[ordine.stato].toLowerCase());
         ricarica();   /* un ordine pronto libera la coda: le date di ritiro si aggiornano */
     }
     if(pdf){
@@ -1194,7 +1113,6 @@ function apriRicevuta(o){
             <dt>Telefono</dt><dd>${esc(telefonoLeggibile(o.telefono))}</dd>
             <dt>Registrato il</dt><dd>${dataLunga(daISO(creato))}, ore ${o.creato.slice(11)}</dd>
             <dt>Sede</dt><dd>${SEDI[o.sede]}</dd>
-            <dt>Avvisi WhatsApp</dt><dd>${o.consenso_whatsapp ? "Sì" : "No"}</dd>
         </dl>
         <h2>Capi consegnati</h2>
         <table class="doc-tab">
