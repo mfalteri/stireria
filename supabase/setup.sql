@@ -281,3 +281,130 @@ create policy "ordini: eliminazione admin" on public.ordini
 -- Dopo la registrazione di un ordine si può cambiare solo lo stato.
 revoke update on public.ordini from authenticated;
 grant  update (stato) on public.ordini to authenticated;
+
+-- =====================================================================
+-- Completi, mezze ceste, lavaggio, prezzi e pagamento
+-- (ridefinisce alcune funzioni e permessi definiti sopra)
+-- =====================================================================
+
+-- ---------- Nuovi capi e dati dell'ordine ----------
+alter table public.ordini
+    add column if not exists completi    integer not null default 0 check (completi    >= 0),
+    add column if not exists mezze_ceste integer not null default 0 check (mezze_ceste >= 0),
+    add column if not exists lavare      boolean not null default false,
+    add column if not exists pagato      boolean not null default false,
+    add column if not exists importo     numeric(8,2) not null default 0 check (importo >= 0);
+
+alter table public.ordini drop constraint if exists almeno_un_capo;
+alter table public.ordini add constraint almeno_un_capo
+    check (camicie + lenzuola + ceste + completi + mezze_ceste > 0);
+
+-- ---------- Tempi e prezzi (CHF): solo stirato / stirato e lavato ----------
+insert into public.config (chiave, valore) values
+    ('tempoCompleto', 40),
+    ('tempoMezzaCesta', 180),
+    ('prezzoCamicia', 2.5),     ('prezzoCamiciaLavato', 3.5),
+    ('prezzoLenzuolo', 5),      ('prezzoLenzuoloLavato', 10),
+    ('prezzoCompleto', 10),     ('prezzoCompletoLavato', 10),
+    ('prezzoMezzaCesta', 15),   ('prezzoMezzaCestaLavato', 20),
+    ('prezzoCesta', 25),        ('prezzoCestaLavato', 35)
+on conflict (chiave) do nothing;
+
+-- Prezzo di un ordine secondo i prezzi attuali
+create or replace function public.calcola_importo(
+    camicie integer, lenzuola integer, ceste integer,
+    completi integer, mezze_ceste integer, lavare boolean
+) returns numeric
+language sql stable set search_path = public
+as $$
+    with p as (select chiave, valore from public.config),
+         v(k) as (select case when lavare then 'Lavato' else '' end)
+    select round((
+          camicie     * coalesce((select valore from p, v where chiave = 'prezzoCamicia'    || v.k), 0)
+        + lenzuola    * coalesce((select valore from p, v where chiave = 'prezzoLenzuolo'   || v.k), 0)
+        + ceste       * coalesce((select valore from p, v where chiave = 'prezzoCesta'      || v.k), 0)
+        + completi    * coalesce((select valore from p, v where chiave = 'prezzoCompleto'   || v.k), 0)
+        + mezze_ceste * coalesce((select valore from p, v where chiave = 'prezzoMezzaCesta' || v.k), 0)
+    )::numeric, 2)
+$$;
+
+-- Alla registrazione: telefono in formato internazionale e importo calcolato dal database
+create or replace function public.prepara_ordine() returns trigger
+language plpgsql set search_path = public
+as $$
+begin
+    new.telefono := public.normalizza_telefono(new.telefono);
+    if new.telefono like '410%' then
+        new.telefono := '41' || substr(new.telefono, 4);
+    end if;
+    new.importo := public.calcola_importo(
+        new.camicie, new.lenzuola, new.ceste, new.completi, new.mezze_ceste, new.lavare
+    );
+    return new;
+end $$;
+
+-- Importo degli ordini già registrati (solo stiratura)
+update public.ordini
+set importo = public.calcola_importo(camicie, lenzuola, ceste, completi, mezze_ceste, lavare)
+where importo = 0;
+
+-- ---------- Carico giornaliero con i nuovi capi ----------
+drop function if exists public.carico_giornaliero();
+create function public.carico_giornaliero()
+returns table (
+    data date,
+    camicie bigint, lenzuola bigint, ceste bigint, completi bigint, mezze_ceste bigint,
+    camicie_aperte bigint, lenzuola_aperte bigint, ceste_aperte bigint,
+    completi_aperte bigint, mezze_ceste_aperte bigint
+)
+language sql stable security definer set search_path = public
+as $$
+    select o.data,
+           sum(o.camicie), sum(o.lenzuola), sum(o.ceste), sum(o.completi), sum(o.mezze_ceste),
+           sum(o.camicie)     filter (where o.stato = 'lavorazione'),
+           sum(o.lenzuola)    filter (where o.stato = 'lavorazione'),
+           sum(o.ceste)       filter (where o.stato = 'lavorazione'),
+           sum(o.completi)    filter (where o.stato = 'lavorazione'),
+           sum(o.mezze_ceste) filter (where o.stato = 'lavorazione')
+    from public.ordini o
+    where public.mio_ruolo() is not null
+    group by o.data
+    order by o.data
+$$;
+
+revoke all on function public.carico_giornaliero() from public, anon;
+grant execute on function public.carico_giornaliero() to authenticated;
+
+-- ---------- Pagamento ----------
+-- Dopo la registrazione si possono cambiare solo stato e pagamento.
+revoke update on public.ordini from authenticated;
+grant  update (stato, pagato) on public.ordini to authenticated;
+
+-- Le sedi possono aggiornare anche gli ordini ritirati (per segnare il pagamento).
+drop policy if exists "ordini: cambio stato" on public.ordini;
+create policy "ordini: cambio stato" on public.ordini
+    for update to authenticated
+    using (public.mio_ruolo() = 'admin' or sede = public.mia_sede())
+    with check (
+        public.mio_ruolo() = 'admin' or
+        (sede = public.mia_sede() and stato in ('pronto','ritirato'))
+    );
+
+-- Per le sedi: lo stato avanza di un passo alla volta e un pagamento non si annulla.
+create or replace function public.controlla_cambio_stato() returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+    if public.mio_ruolo() = 'sede' then
+        if new.stato is distinct from old.stato and not (
+            (old.stato = 'lavorazione' and new.stato = 'pronto') or
+            (old.stato = 'pronto'      and new.stato = 'ritirato')
+        ) then
+            raise exception 'Passaggio di stato non consentito: % → %', old.stato, new.stato;
+        end if;
+        if old.pagato and not new.pagato then
+            raise exception 'Un pagamento registrato può essere annullato solo dall''amministratore';
+        end if;
+    end if;
+    return new;
+end $$;

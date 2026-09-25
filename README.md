@@ -61,6 +61,8 @@ Il sito è statico: nessuna compilazione.
 | Registrare ordini | per tutte le sedi | solo per la propria sede |
 | Vedere ordini | tutti | solo della propria sede |
 | Cambiare stato | tutti gli stati | *In lavorazione → Pronto → Ritirato*, solo per la propria sede |
+| Segnare un ordine pagato | sì (anche annullare) | sì, solo per la propria sede (non annullabile) |
+| Tempi e prezzi dei capi | modifica | no |
 | Eliminare ordini | sì | no |
 | Tempi e turni | modifica | no |
 | Piano di lavoro e stampe | sì | no |

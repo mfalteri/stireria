@@ -9,16 +9,33 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const MINUTI_TURNO = 225;
 const ORA_RITIRO = "a partire dalle 14.00";
 const GIORNI_SCELTA_RITIRO = 6;       // primo giorno possibile + 5 successivi
-const CONFIG_PREDEFINITA = { tempoCamicia:25, tempoLenzuolo:20, tempoCesta:360, turniDefault:6 };
+/* Tempi (minuti) e prezzi (CHF: solo stirato / stirato e lavato); i valori veri sono nel database. */
+const CONFIG_PREDEFINITA = {
+    turniDefault:6,
+    tempoCamicia:25, tempoLenzuolo:20, tempoCompleto:40, tempoMezzaCesta:180, tempoCesta:360,
+    prezzoCamicia:2.5,  prezzoCamiciaLavato:3.5,
+    prezzoLenzuolo:5,   prezzoLenzuoloLavato:10,
+    prezzoCompleto:10,  prezzoCompletoLavato:10,
+    prezzoMezzaCesta:15, prezzoMezzaCestaLavato:20,
+    prezzoCesta:25,     prezzoCestaLavato:35
+};
 const AGGIORNAMENTO_MS = 30000;       // ricarica periodica dei dati
 
 const SEDI = { emporio:"Emporio", piazzetta:"Piazzetta" };
 
 const CAPI = [
-    { k:"camicie",  nome:"Camicie",  uno:"camicia",  tempo:"tempoCamicia" },
-    { k:"lenzuola", nome:"Lenzuola", uno:"lenzuolo", tempo:"tempoLenzuolo" },
-    { k:"ceste",    nome:"Ceste",    uno:"cesta",    tempo:"tempoCesta" }
+    { k:"camicie",     nome:"Camicie",          uno:"camicia",          breve:"Camicie",  tempo:"tempoCamicia",    prezzo:"prezzoCamicia" },
+    { k:"lenzuola",    nome:"Lenzuola",         uno:"lenzuolo",         breve:"Lenzuola", tempo:"tempoLenzuolo",   prezzo:"prezzoLenzuolo" },
+    { k:"completi",    nome:"Completi da uomo", uno:"completo da uomo", breve:"Completi", tempo:"tempoCompleto",   prezzo:"prezzoCompleto" },
+    { k:"mezze_ceste", nome:"Mezze ceste",      uno:"mezza cesta",      breve:"½ ceste",  tempo:"tempoMezzaCesta", prezzo:"prezzoMezzaCesta" },
+    { k:"ceste",       nome:"Ceste",            uno:"cesta",            breve:"Ceste",    tempo:"tempoCesta",      prezzo:"prezzoCesta" }
 ];
+
+/* Prezzi: lo stesso calcolo lo fa il database alla registrazione (calcola_importo). */
+const prezzoUnitario = (c, lavare) => Number(db.config[c.prezzo + (lavare ? "Lavato" : "")]) || 0;
+const calcolaImporto = (capi, lavare) =>
+    Math.round(CAPI.reduce((s,c) => s + (Number(capi[c.k]) || 0) * prezzoUnitario(c, lavare), 0) * 100) / 100;
+const chf = n => "CHF " + (Number(n) || 0).toFixed(2);
 const GIORNI = ["Domenica","Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato"];
 const GIORNI_BREVI = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
 const STATI = { lavorazione:"In lavorazione", pronto:"Pronto", ritirato:"Ritirato" };
@@ -72,7 +89,12 @@ let timerAggiornamento = null;
 /* Riga del database → ordine usato dall'app (ora di registrazione in ora locale). */
 function daRiga(r){
     const c = new Date(r.creato);
-    return { ...r, id:Number(r.id), creato: dataISO(c) + "T" + pad(c.getHours()) + ":" + pad(c.getMinutes()) };
+    return {
+        ...r,
+        id: Number(r.id),
+        importo: Number(r.importo) || 0,
+        creato: dataISO(c) + "T" + pad(c.getHours()) + ":" + pad(c.getMinutes())
+    };
 }
 
 /* Supabase restituisce al massimo 1000 righe per richiesta: si leggono a blocchi. */
@@ -115,12 +137,12 @@ async function caricaDati(){
     db.arrivi = {};
     db.carico = {};
     carico.data.forEach(r => {
-        db.arrivi[r.data] = { camicie: Number(r.camicie), lenzuola: Number(r.lenzuola), ceste: Number(r.ceste) };
-        db.carico[r.data] = {
-            camicie: Number(r.camicie_aperte) || 0,
-            lenzuola: Number(r.lenzuola_aperte) || 0,
-            ceste: Number(r.ceste_aperte) || 0
-        };
+        db.arrivi[r.data] = {};
+        db.carico[r.data] = {};
+        CAPI.forEach(c => {
+            db.arrivi[r.data][c.k] = Number(r[c.k]) || 0;
+            db.carico[r.data][c.k] = Number(r[c.k + "_aperte"]) || 0;
+        });
     });
 
     db.prossimo = Number(prossimo.data) || null;
@@ -492,6 +514,27 @@ function capiInseriti(){
     return capi;
 }
 
+/* Totale del modulo: cambia con i capi e con la casella "Lavare". */
+function aggiornaTotale(){
+    const capi = capiInseriti();
+    const lavare = $("#lavare").checked;
+    const totale = calcolaImporto(capi, lavare);
+    const righe = CAPI.filter(c => capi[c.k] > 0)
+        .map(c => `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()}</span><span>${chf(capi[c.k] * prezzoUnitario(c, lavare))}</span></li>`)
+        .join("");
+
+    $("#totaleOrdine").innerHTML = `
+        ${righe ? `<ul class="totale-righe">${righe}</ul>` : ""}
+        <div class="totale-somma">
+            <span>Totale <small>${lavare ? "lavaggio e stiratura" : "solo stiratura"}</small></span>
+            <strong>${chf(totale)}</strong>
+        </div>`;
+    return totale;
+}
+
+$("#lavare").addEventListener("change", aggiornaTicket);
+$("#pagato").addEventListener("change", aggiornaTicket);
+
 /*
 Numero in formato internazionale senza "+".
 I numeri svizzeri si possono scrivere senza prefisso:
@@ -516,7 +559,12 @@ function controllaTelefono(n){
     return "";
 }
 const chipsCapi = o => CAPI.filter(c => o[c.k] > 0)
-    .map(c => `<span class="chip"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}</span>`).join("");
+    .map(c => `<span class="chip"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}</span>`).join("") +
+    (o.lavare ? '<span class="chip chip-lavare">da lavare</span>' : "");
+
+const badgePagamento = o => o.pagato
+    ? '<span class="pagamento pagamento-si">Pagato</span>'
+    : '<span class="pagamento pagamento-no">Da pagare</span>';
 
 function testaTicket(numero, sede){
     return `<div class="ticket-testa"><span>N° ${numero ? numeroOrdine(numero) : "—"}</span><span>Ritiro · ${SEDI[sede]}</span><span class="occhiello"></span></div>`;
@@ -535,7 +583,12 @@ function aggiornaTicket(){
                     <span class="timbro">Registrato</span>
                     <span class="muted" style="margin-top:8px;">${GIORNI[r.getDay()]}, ${ORA_RITIRO}</span>
                     <span class="ticket-data">${pad(r.getDate())}.${pad(r.getMonth()+1)}<small>${r.getFullYear()}</small></span>
-                    <span class="muted">${esc(o.nome)} ${esc(o.cognome)} · <span class="mono">+${esc(o.telefono)}</span></span>
+                    <span class="muted">${esc(o.nome)} ${esc(o.cognome)} · <span class="mono">${esc(telefonoLeggibile(o.telefono))}</span></span>
+                    <span class="ticket-importo">
+                        <strong>${chf(o.importo)}</strong>
+                        <span>${o.lavare ? "lavaggio e stiratura" : "solo stiratura"}</span>
+                        ${badgePagamento(o)}
+                    </span>
                 </div>
             </div>
             <div class="taglio"></div>
@@ -558,6 +611,7 @@ function aggiornaTicket(){
 
     const capi = capiInseriti();
     $$(".capo").forEach(r => r.classList.toggle("attivo", capi[r.dataset.capo] > 0));
+    const totale = aggiornaTotale();
 
     const deposito = dataISO(giornoDeposito(oggi()));
     const primo = primoRitiro(capi, deposito);
@@ -608,7 +662,8 @@ function aggiornaTicket(){
     const riepilogo = () => {
         const d = daISO(ritiroScelto);
         $("#riepilogoRitiro").textContent =
-            "Ritiro " + GIORNI[d.getDay()].toLowerCase() + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + ", dalle 14.00";
+            "Ritiro " + GIORNI[d.getDay()].toLowerCase() + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + ", dalle 14.00 · " +
+            chf(totale) + ($("#pagato").checked ? " pagato" : " da pagare al ritiro");
     };
     riepilogo();
     $$('input[name="ritiro"]').forEach(r => r.addEventListener("change", () => { ritiroScelto = r.value; riepilogo(); }));
@@ -651,7 +706,9 @@ $("#formOrdine").addEventListener("submit", async e => {
         data: dataISO(giornoDeposito(oggi())),
         sede: utente.sede || sedeOrdine,
         nome, cognome, telefono, ...capi,
-        ritiro: ritiroScelto
+        ritiro: ritiroScelto,
+        lavare: $("#lavare").checked,
+        pagato: $("#pagato").checked
     }).select().single();
 
     if(error){
@@ -683,6 +740,8 @@ function nuovoOrdine(mettiFuoco = true){
     bloccaModulo(false);
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
     CAPI.forEach(c => $("#" + c.k).value = 0);
+    $("#lavare").checked = false;
+    $("#pagato").checked = false;
     mostraErroreOrdine("");
     aggiornaTicket();
     if(mettiFuoco) $("#nome").focus();
@@ -725,6 +784,7 @@ function disegnaKpi(ordini){
     $("#kpi").innerHTML = `
         <div class="kpi-voce"><span>In lavorazione</span><strong>${ordini.filter(o => o.stato === "lavorazione").length}</strong><small>in stireria</small></div>
         <div class="kpi-voce"><span>Pronti da ritirare</span><strong>${ordini.filter(o => o.stato === "pronto").length}</strong><small>in attesa del cliente</small></div>
+        <div class="kpi-voce"><span>Da incassare</span><strong>${chf(ordini.filter(o => !o.pagato).reduce((s,o) => s + o.importo, 0))}</strong><small>${ordini.filter(o => !o.pagato).length} ordini non ancora pagati</small></div>
         <div class="kpi-voce"><span>Ritiri previsti oggi</span><strong>${ordini.filter(o => o.ritiro === oggiI && o.stato !== "ritirato").length}</strong><small>${dataBreve(oggi())}, ${ORA_RITIRO}</small></div>
         <div class="kpi-voce"><span>Primo ritiro possibile</span><strong>${primo ? dataBreve(primo) : "—"}</strong><small>per un ordine registrato ora</small></div>`;
 }
@@ -757,12 +817,14 @@ function disegnaOrdini(){
                 <td>${badgeSede(o.sede)}</td>
                 <td class="cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span>${esc(telefonoLeggibile(o.telefono))}</span></td>
                 <td><div class="chips">${chipsCapi(o)}</div></td>
+                <td class="importo-cella"><strong>${chf(o.importo)}</strong>${badgePagamento(o)}</td>
                 <td class="data-cella">${dataBreve(daISO(o.data))}<span class="sotto">ore ${o.creato.slice(11)}</span></td>
                 <td class="data-cella">${dataBreve(daISO(o.ritiro))}${inRitardo ? '<span class="ritardo">Oltre la data prevista</span>' : '<span class="sotto">dalle 14.00</span>'}</td>
                 <td><span class="stato stato-${o.stato}">${STATI[o.stato]}</span></td>
                 <td>
                     <div class="azioni-riga">
                         ${avanti ? `<button class="btn btn-piccolo" data-avanza="${o.id}" data-stato="${avanti[0]}">${avanti[1]}</button>` : ""}
+                        ${o.stato === "ritirato" && !o.pagato ? `<button class="btn btn-piccolo" data-incassa="${o.id}">Segna pagato</button>` : ""}
                         <button class="btn btn-piccolo" data-conferma="${o.id}">Etichetta</button>
                         <button class="btn btn-piccolo" data-ricevuta="${o.id}">Ricevuta</button>
                         ${isAdmin() ? `<button class="btn btn-piccolo btn-pericolo" data-elimina="${o.id}">Elimina</button>` : ""}
@@ -782,17 +844,52 @@ $("#righeOrdini").addEventListener("click", async e => {
 
     if(avanza){
         const id = Number(avanza.dataset.avanza);
+        const ordine = db.ordini.find(x => x.id === id);
+        const modifica = { stato:avanza.dataset.stato };
+
+        /* Alla consegna si chiede se il cliente ha pagato (se non l'aveva già fatto). */
+        if(modifica.stato === "ritirato" && !ordine.pagato){
+            const risposta = await chiedi(
+                "Il cliente ha pagato?",
+                "Ordine #" + numeroOrdine(id) + " · " + ordine.nome + " " + ordine.cognome + " · totale " + chf(ordine.importo),
+                [{ valore:"no", testo:"No, pagherà dopo" }, { valore:"si", testo:"Sì, ha pagato", primario:true }]
+            );
+            if(!risposta) return;
+            modifica.pagato = risposta === "si";
+        }
+
         avanza.disabled = true;
-        const { error } = await sb.from("ordini").update({ stato:avanza.dataset.stato }).eq("id", id);
+        const { error } = await sb.from("ordini").update(modifica).eq("id", id);
         if(error){
             avanza.disabled = false;
             return erroreDatabase(error, "Cambio di stato");
         }
-        const ordine = db.ordini.find(x => x.id === id);
-        ordine.stato = avanza.dataset.stato;
+        Object.assign(ordine, modifica);
         disegnaOrdini();
-        avvisa("Ordine #" + numeroOrdine(id) + ": " + STATI[ordine.stato].toLowerCase());
+        avvisa("Ordine #" + numeroOrdine(id) + ": " + STATI[ordine.stato].toLowerCase() +
+            (modifica.stato === "ritirato" ? (ordine.pagato ? " · pagato" : " · da pagare") : ""));
         ricarica();   /* un ordine pronto libera la coda: le date di ritiro si aggiornano */
+    }
+
+    const incassa = e.target.closest("[data-incassa]");
+    if(incassa){
+        const id = Number(incassa.dataset.incassa);
+        const ordine = db.ordini.find(x => x.id === id);
+        const risposta = await chiedi(
+            "Segnare l'ordine come pagato?",
+            "Ordine #" + numeroOrdine(id) + " · " + ordine.nome + " " + ordine.cognome + " · totale " + chf(ordine.importo),
+            [{ valore:"no", testo:"Annulla" }, { valore:"si", testo:"Sì, ha pagato", primario:true }]
+        );
+        if(risposta !== "si") return;
+        incassa.disabled = true;
+        const { error } = await sb.from("ordini").update({ pagato:true }).eq("id", id);
+        if(error){
+            incassa.disabled = false;
+            return erroreDatabase(error, "Registrazione del pagamento");
+        }
+        ordine.pagato = true;
+        disegnaOrdini();
+        avvisa("Ordine #" + numeroOrdine(id) + ": pagato");
     }
     if(pdf){
         apriConferma(db.ordini.find(x => x.id === Number(pdf.dataset.conferma)));
@@ -855,7 +952,7 @@ function disegnaPiano(){
 function disegnaCarico(){
     const date = dateSettimana();
 
-    ["tempoCamicia","tempoLenzuolo","tempoCesta","turniDefault"].forEach(id => {
+    CHIAVI_IMPOSTAZIONI.forEach(id => {
         if(document.activeElement !== $("#" + id)) $("#" + id).value = db.config[id];
     });
 
@@ -878,16 +975,14 @@ function disegnaCarico(){
         coda = Math.max(0, coda - cap) + minutiArrivati(aperti,d);
         arrivatoTot += arrivato;
         capacitaTot += cap;
-        const g = arrivi[d] || { camicie:0, lenzuola:0, ceste:0 };
+        const g = arrivi[d] || {};
         const giorno = daISO(d);
 
         return `
             <tr class="${d === oggiI ? "oggi" : ""}">
                 <td class="giorno-nome"><strong>${GIORNI[giorno.getDay()]}</strong><span>${pad(giorno.getDate())}/${pad(giorno.getMonth()+1)}</span></td>
                 <td><input class="turni-input" type="number" min="0" id="turni-${d}" data-data="${d}" value="${turniDi(d)}" aria-label="Turni ${GIORNI[giorno.getDay()]}"></td>
-                <td class="n">${g.camicie}</td>
-                <td class="n">${g.lenzuola}</td>
-                <td class="n">${g.ceste}</td>
+                ${CAPI.map(c => `<td class="n">${g[c.k] || 0}</td>`).join("")}
                 <td class="n">${durata(arrivato)}</td>
                 <td>
                     <div class="utilizzo">
@@ -938,6 +1033,7 @@ function disegnaConsegne(){
                         <div class="chips">${chipsCapi(o)}</div>
                         <div class="consegna-piede">
                             <span class="stato stato-${o.stato}">${STATI[o.stato]}</span>
+                            ${badgePagamento(o)}
                             ${sede === "tutte" ? badgeSede(o.sede) : ""}
                         </div>
                     </div>`).join("") : '<p class="colonna-vuota">Nessun ritiro</p>'}
@@ -970,11 +1066,25 @@ $("#righeGiorni").addEventListener("change", async e => {
     avvisa("Turni di " + dataBreve(daISO(data)) + " salvati");
 });
 
-/* Tempi e turni predefiniti: salvati mezzo secondo dopo l'ultima modifica. */
+/* Impostazioni dei capi (tempo e prezzi), disegnate a partire dall'elenco CAPI. */
+const CHIAVI_IMPOSTAZIONI = ["turniDefault", ...CAPI.flatMap(c => [c.tempo, c.prezzo, c.prezzo + "Lavato"])];
+
+$("#impostazioniCapi").innerHTML = `
+    <div class="imp-riga imp-testa"><span>Capo</span><span>Tempo</span><span>Stirato</span><span>Lavato</span></div>
+    ${CAPI.map(c => `
+        <div class="imp-riga">
+            <span class="imp-nome">${c.nome}</span>
+            <label class="suffisso"><input id="${c.tempo}" type="number" min="0" step="1" inputmode="numeric" aria-label="Tempo ${c.uno} (minuti)"><em>min</em></label>
+            <label class="suffisso"><input id="${c.prezzo}" type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prezzo ${c.uno} solo stirato (CHF)"><em>CHF</em></label>
+            <label class="suffisso"><input id="${c.prezzo}Lavato" type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prezzo ${c.uno} stirato e lavato (CHF)"><em>CHF</em></label>
+        </div>`).join("")}`;
+
+/* Tempi, prezzi e turni predefiniti: salvati mezzo secondo dopo l'ultima modifica. */
 const timerConfig = {};
-["tempoCamicia","tempoLenzuolo","tempoCesta","turniDefault"].forEach(id => {
+CHIAVI_IMPOSTAZIONI.forEach(id => {
     $("#" + id).addEventListener("input", () => {
-        const valore = Math.max(0, parseInt($("#" + id).value) || 0);
+        const numero = id.startsWith("prezzo") ? parseFloat($("#" + id).value) : parseInt($("#" + id).value);
+        const valore = Math.max(0, Math.round((numero || 0) * 100) / 100);
         db.config[id] = valore;
         disegnaCarico();
 
@@ -1068,6 +1178,7 @@ function telefonoLeggibile(n){
 
 const testoCapiEtichetta = o => CAPI.filter(c => o[c.k] > 0)
     .map(c => o[c.k] + " " + (o[c.k] === 1 ? c.uno : c.nome.toLowerCase()))
+    .concat(o.lavare ? ["DA LAVARE"] : [])
     .join(" · ");
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
@@ -1088,9 +1199,12 @@ function apriConferma(o){
             </div>
             <div class="et-capi">${esc(testoCapiEtichetta(o))}</div>
             <div class="et-ritiro">
-                <span>Ritiro</span>
-                <strong>${dataPunti(daISO(o.ritiro))}</strong>
-                <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
+                <div class="et-ritiro-testo">
+                    <span>Ritiro</span>
+                    <strong>${dataPunti(daISO(o.ritiro))}</strong>
+                    <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
+                </div>
+                ${o.pagato ? '<b class="et-pagato">PAGATO</b>' : ""}
             </div>
         </div>`;
 
@@ -1114,11 +1228,22 @@ function apriRicevuta(o){
             <dt>Registrato il</dt><dd>${dataLunga(daISO(creato))}, ore ${o.creato.slice(11)}</dd>
             <dt>Sede</dt><dd>${SEDI[o.sede]}</dd>
         </dl>
-        <h2>Capi consegnati</h2>
+        <h2>Capi consegnati · ${o.lavare ? "lavaggio e stiratura" : "solo stiratura"}</h2>
         <table class="doc-tab">
-            <thead><tr><th>Capo</th><th class="n">Quantità</th></tr></thead>
-            <tbody>${CAPI.filter(c => o[c.k] > 0).map(c => `<tr><td>${c.nome}</td><td class="n">${o[c.k]}</td></tr>`).join("")}</tbody>
+            <thead><tr><th>Capo</th><th class="n">Quantità</th><th class="n">Prezzo</th><th class="n">Totale</th></tr></thead>
+            <tbody>${CAPI.filter(c => o[c.k] > 0).map(c => `
+                <tr>
+                    <td>${c.nome}</td>
+                    <td class="n">${o[c.k]}</td>
+                    <td class="n">${chf(prezzoUnitario(c, o.lavare))}</td>
+                    <td class="n">${chf(o[c.k] * prezzoUnitario(c, o.lavare))}</td>
+                </tr>`).join("")}</tbody>
+            <tfoot><tr><td colspan="3">Totale</td><td class="n">${chf(o.importo)}</td></tr></tfoot>
         </table>
+        <div class="doc-pagamento ${o.pagato ? "pagato" : ""}">
+            <strong>${o.pagato ? "Pagato" : "Da pagare al ritiro"}</strong>
+            <span>${chf(o.importo)}</span>
+        </div>
         <div class="doc-ritiro">
             <span>Ritiro</span>
             <strong>${dataLunga(daISO(o.ritiro))}</strong>
@@ -1195,6 +1320,17 @@ function pdfEtichetta(o){
     pdf.setFontSize(7.5);
     pdf.text(ORA_RITIRO + " · presso " + SEDI[o.sede], sx + 3, 54.4);
 
+    /* Solo se il cliente ha già pagato: riquadro nero "PAGATO" a destra. */
+    if(o.pagato){
+        pdf.setFillColor(0);
+        pdf.roundedRect(dx - 26, 42, 23, 12.5, 1.2, 1.2, "F");
+        pdf.setTextColor(255);
+        pdf.setFont("helvetica","bold");
+        pdf.setFontSize(11);
+        pdf.text("PAGATO", dx - 14.5, 49.8, { align:"center" });
+        pdf.setTextColor(0);
+    }
+
     return pdf;
 }
 
@@ -1210,10 +1346,8 @@ function righeCapi(lavori){
             <tr>
                 <td><span class="spunta"></span></td>
                 <td class="n">${i+1}</td>
-                <td><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span class="piccolo">#${numeroOrdine(o.id)} · ${SEDI[o.sede]} · ${nota}</span></td>
-                <td class="n">${o.camicie || "–"}</td>
-                <td class="n">${o.lenzuola || "–"}</td>
-                <td class="n">${o.ceste || "–"}</td>
+                <td><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span class="piccolo">#${numeroOrdine(o.id)} · ${SEDI[o.sede]}${o.lavare ? " · DA LAVARE" : ""} · ${nota}</span></td>
+                ${CAPI.map(c => `<td class="n">${o[c.k] || "–"}</td>`).join("")}
                 <td class="n">${durata(l.minuti)}</td>
             </tr>`;
     }).join("");
@@ -1231,9 +1365,9 @@ function apriPianoGiorno(iso){
         <h2>Ordini da stirare</h2>
         ${lavori.length ? `
         <table class="doc-tab">
-            <thead><tr><th></th><th class="n">#</th><th>Cliente</th><th class="n">Camicie</th><th class="n">Lenzuola</th><th class="n">Ceste</th><th class="n">Tempo</th></tr></thead>
+            <thead><tr><th></th><th class="n">#</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}<th class="n">Tempo</th></tr></thead>
             <tbody>${righeCapi(lavori)}</tbody>
-            <tfoot><tr><td></td><td></td><td>Totale</td><td class="n">${totale.camicie}</td><td class="n">${totale.lenzuola}</td><td class="n">${totale.ceste}</td><td class="n">${durata(minuti)}</td></tr></tfoot>
+            <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}<td class="n">${durata(minuti)}</td></tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da stirare in questo giorno.</p>'}
         <p class="doc-nota">Le quantità sono quelle dell'intero ordine; il tempo è la parte prevista per questo giorno. Spuntare la casella a lavoro finito.</p>`;
 
@@ -1250,8 +1384,9 @@ function apriPianoSettimana(){
         const somma = k => lavori.reduce((s,l) => s + l.ordine[k], 0);
         const minuti = lavori.reduce((s,l) => s + l.minuti, 0);
         const cap = capacita(iso);
-        return { iso, lavori, minuti, cap, camicie:somma("camicie"), lenzuola:somma("lenzuola"), ceste:somma("ceste"),
-                 ritiri: db.ordini.filter(o => o.ritiro === iso).length };
+        const riga = { iso, lavori, minuti, cap, ritiri: db.ordini.filter(o => o.ritiro === iso).length };
+        CAPI.forEach(c => riga[c.k] = somma(c.k));
+        return riga;
     });
     const tot = k => righe.reduce((s,r) => s + r[k], 0);
 
@@ -1260,7 +1395,7 @@ function apriPianoSettimana(){
         <p class="sottotitolo">${dataLunga(daISO(date[0]))} – ${dataLunga(daISO(date[4]))}</p>
         <h2>Riepilogo</h2>
         <table class="doc-tab">
-            <thead><tr><th>Giorno</th><th class="n">Turni</th><th class="n">Capacità</th><th class="n">Lavoro previsto</th><th class="n">Ordini</th><th class="n">Camicie</th><th class="n">Lenzuola</th><th class="n">Ceste</th><th class="n">Ritiri</th></tr></thead>
+            <thead><tr><th>Giorno</th><th class="n">Turni</th><th class="n">Capacità</th><th class="n">Lavoro previsto</th><th class="n">Ordini</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}<th class="n">Ritiri</th></tr></thead>
             <tbody>${righe.map(r => `
                 <tr>
                     <td>${dataBreve(daISO(r.iso))}</td>
@@ -1268,14 +1403,12 @@ function apriPianoSettimana(){
                     <td class="n">${durata(r.cap)}</td>
                     <td class="n">${durata(r.minuti)}</td>
                     <td class="n">${r.lavori.length}</td>
-                    <td class="n">${r.camicie}</td>
-                    <td class="n">${r.lenzuola}</td>
-                    <td class="n">${r.ceste}</td>
+                    ${CAPI.map(c => `<td class="n">${r[c.k]}</td>`).join("")}
                     <td class="n">${r.ritiri}</td>
                 </tr>`).join("")}</tbody>
-            <tfoot><tr><td>Totale</td><td class="n">${date.reduce((s,d) => s + turniDi(d), 0)}</td><td class="n">${durata(tot("cap"))}</td><td class="n">${durata(tot("minuti"))}</td><td></td><td class="n">${tot("camicie")}</td><td class="n">${tot("lenzuola")}</td><td class="n">${tot("ceste")}</td><td class="n">${tot("ritiri")}</td></tr></tfoot>
+            <tfoot><tr><td>Totale</td><td class="n">${date.reduce((s,d) => s + turniDi(d), 0)}</td><td class="n">${durata(tot("cap"))}</td><td class="n">${durata(tot("minuti"))}</td><td></td>${CAPI.map(c => `<td class="n">${tot(c.k)}</td>`).join("")}<td class="n">${tot("ritiri")}</td></tr></tfoot>
         </table>
-        <p class="doc-nota">Camicie, lenzuola e ceste: capi degli ordini lavorati in quel giorno (un ordine diviso su due giorni compare in entrambi). Ritiri: ordini che i clienti ritirano quel giorno ${ORA_RITIRO}.</p>`;
+        <p class="doc-nota">Capi: quelli degli ordini lavorati in quel giorno (un ordine diviso su due giorni compare in entrambi). Ritiri: ordini che i clienti ritirano quel giorno ${ORA_RITIRO}.</p>`;
 
     mostraDocumento("Piano di lavoro · settimana " + numero, html, "Piano-lavoro_settimana-" + numero + ".pdf");
 }
