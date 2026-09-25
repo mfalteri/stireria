@@ -408,3 +408,51 @@ begin
     end if;
     return new;
 end $$;
+
+-- =====================================================================
+-- Lavaggio scelto per ogni tipo di capo (sostituisce calcola_importo)
+-- =====================================================================
+alter table public.ordini
+    add column if not exists lavare_camicie     boolean not null default false,
+    add column if not exists lavare_lenzuola    boolean not null default false,
+    add column if not exists lavare_completi    boolean not null default false,
+    add column if not exists lavare_mezze_ceste boolean not null default false,
+    add column if not exists lavare_ceste       boolean not null default false;
+
+-- Prezzo di un ordine: per ogni capo, prezzo "stirato" o "stirato e lavato"
+create or replace function public.calcola_importo_ordine(o public.ordini) returns numeric
+language sql stable set search_path = public
+as $$
+    with p as (select chiave, valore from public.config)
+    select round((
+          o.camicie     * coalesce((select valore from p where chiave = 'prezzoCamicia'    || case when o.lavare_camicie     then 'Lavato' else '' end), 0)
+        + o.lenzuola    * coalesce((select valore from p where chiave = 'prezzoLenzuolo'   || case when o.lavare_lenzuola    then 'Lavato' else '' end), 0)
+        + o.completi    * coalesce((select valore from p where chiave = 'prezzoCompleto'   || case when o.lavare_completi    then 'Lavato' else '' end), 0)
+        + o.mezze_ceste * coalesce((select valore from p where chiave = 'prezzoMezzaCesta' || case when o.lavare_mezze_ceste then 'Lavato' else '' end), 0)
+        + o.ceste       * coalesce((select valore from p where chiave = 'prezzoCesta'      || case when o.lavare_ceste       then 'Lavato' else '' end), 0)
+    )::numeric, 2)
+$$;
+
+create or replace function public.prepara_ordine() returns trigger
+language plpgsql set search_path = public
+as $$
+begin
+    new.telefono := public.normalizza_telefono(new.telefono);
+    if new.telefono like '410%' then
+        new.telefono := '41' || substr(new.telefono, 4);
+    end if;
+
+    -- un capo si lava solo se c'è; "lavare" = almeno un capo da lavare
+    new.lavare_camicie     := new.lavare_camicie     and new.camicie > 0;
+    new.lavare_lenzuola    := new.lavare_lenzuola    and new.lenzuola > 0;
+    new.lavare_completi    := new.lavare_completi    and new.completi > 0;
+    new.lavare_mezze_ceste := new.lavare_mezze_ceste and new.mezze_ceste > 0;
+    new.lavare_ceste       := new.lavare_ceste       and new.ceste > 0;
+    new.lavare := new.lavare_camicie or new.lavare_lenzuola or new.lavare_completi
+               or new.lavare_mezze_ceste or new.lavare_ceste;
+
+    new.importo := public.calcola_importo_ordine(new);
+    return new;
+end $$;
+
+drop function if exists public.calcola_importo(integer, integer, integer, integer, integer, boolean);

@@ -33,8 +33,23 @@ const CAPI = [
 
 /* Prezzi: lo stesso calcolo lo fa il database alla registrazione (calcola_importo). */
 const prezzoUnitario = (c, lavare) => Number(db.config[c.prezzo + (lavare ? "Lavato" : "")]) || 0;
-const calcolaImporto = (capi, lavare) =>
-    Math.round(CAPI.reduce((s,c) => s + (Number(capi[c.k]) || 0) * prezzoUnitario(c, lavare), 0) * 100) / 100;
+/* lavaggi: { camicie:true, ... } — il lavaggio si sceglie per ogni tipo di capo */
+const calcolaImporto = (capi, lavaggi) =>
+    Math.round(CAPI.reduce((s,c) => s + (Number(capi[c.k]) || 0) * prezzoUnitario(c, lavaggi[c.k]), 0) * 100) / 100;
+
+/* Nel database: lavare_camicie, lavare_lenzuola, … */
+const campoLavare = c => "lavare_" + c.k;
+const daLavare = (o, c) => !!o[campoLavare(c)] && o[c.k] > 0;
+const lavaggiDi = o => Object.fromEntries(CAPI.map(c => [c.k, daLavare(o, c)]));
+
+/* "solo stiratura", "lavaggio e stiratura" o "in parte da lavare" */
+function descriviServizio(capi, lavaggi){
+    const presenti = CAPI.filter(c => capi[c.k] > 0);
+    const lavati = presenti.filter(c => lavaggi[c.k]);
+    if(!lavati.length) return "solo stiratura";
+    if(lavati.length === presenti.length) return "lavaggio e stiratura";
+    return "in parte da lavare";
+}
 const chf = n => "CHF " + (Number(n) || 0).toFixed(2);
 const GIORNI = ["Domenica","Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato"];
 const GIORNI_BREVI = ["Dom","Lun","Mar","Mer","Gio","Ven","Sab"];
@@ -488,9 +503,19 @@ let etichettaAperta = false;
 let ricevutaAperta = false;
 
 function disegnaCapi(){
-    $("#capi").innerHTML = CAPI.map(c => `
+    $("#capi").innerHTML = `
+        <div class="capi-testa">
+            <label class="lava lava-tutto" for="lavareTutto">
+                <input id="lavareTutto" type="checkbox">
+                <span>Lavare tutto</span>
+            </label>
+        </div>` + CAPI.map(c => `
         <div class="capo" data-capo="${c.k}">
             <strong>${c.nome}</strong>
+            <label class="lava" for="${campoLavare(c)}" title="Lavare anche: ${c.nome.toLowerCase()}">
+                <input id="${campoLavare(c)}" type="checkbox" data-lavare="${c.k}">
+                <span>Lavare</span>
+            </label>
             <div class="stepper">
                 <button type="button" data-passo="-1" aria-label="Togli ${c.uno}">−</button>
                 <input id="${c.k}" type="number" min="0" step="1" value="0" inputmode="numeric" aria-label="${c.nome}">
@@ -499,13 +524,34 @@ function disegnaCapi(){
         </div>`).join("");
 
     $$(".capo").forEach(riga => {
-        const input = riga.querySelector("input");
+        const input = riga.querySelector(".stepper input");
         riga.querySelectorAll("[data-passo]").forEach(b => b.addEventListener("click", () => {
             input.value = Math.max(0, (parseInt(input.value) || 0) + Number(b.dataset.passo));
             aggiornaTicket();
         }));
         input.addEventListener("input", aggiornaTicket);
     });
+
+    /* Lavaggio di un tipo di capo */
+    $$("[data-lavare]").forEach(box => box.addEventListener("change", () => {
+        aggiornaLavareTutto();
+        aggiornaTicket();
+    }));
+
+    /* "Lavare tutto" accende o spegne il lavaggio di tutti i capi */
+    $("#lavareTutto").addEventListener("change", () => {
+        $$("[data-lavare]").forEach(box => box.checked = $("#lavareTutto").checked);
+        aggiornaLavareTutto();
+        aggiornaTicket();
+    });
+}
+
+/* "Lavare tutto" spuntato se lo sono tutti, a metà se solo alcuni. */
+function aggiornaLavareTutto(){
+    const caselle = $$("[data-lavare]");
+    const spuntate = caselle.filter(b => b.checked).length;
+    $("#lavareTutto").checked = spuntate === caselle.length;
+    $("#lavareTutto").indeterminate = spuntate > 0 && spuntate < caselle.length;
 }
 
 function capiInseriti(){
@@ -514,25 +560,30 @@ function capiInseriti(){
     return capi;
 }
 
-/* Totale del modulo: cambia con i capi e con la casella "Lavare". */
+function lavaggiInseriti(){
+    const lavaggi = {};
+    CAPI.forEach(c => lavaggi[c.k] = $("#" + campoLavare(c)).checked);
+    return lavaggi;
+}
+
+/* Totale del modulo: cambia con i capi e con le caselle "Lavare". */
 function aggiornaTotale(){
     const capi = capiInseriti();
-    const lavare = $("#lavare").checked;
-    const totale = calcolaImporto(capi, lavare);
+    const lavaggi = lavaggiInseriti();
+    const totale = calcolaImporto(capi, lavaggi);
     const righe = CAPI.filter(c => capi[c.k] > 0)
-        .map(c => `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()}</span><span>${chf(capi[c.k] * prezzoUnitario(c, lavare))}</span></li>`)
+        .map(c => `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${lavaggi[c.k] ? " <em>lavaggio e stiratura</em>" : ""}</span><span>${chf(capi[c.k] * prezzoUnitario(c, lavaggi[c.k]))}</span></li>`)
         .join("");
 
     $("#totaleOrdine").innerHTML = `
         ${righe ? `<ul class="totale-righe">${righe}</ul>` : ""}
         <div class="totale-somma">
-            <span>Totale <small>${lavare ? "lavaggio e stiratura" : "solo stiratura"}</small></span>
+            <span>Totale <small>${descriviServizio(capi, lavaggi)}</small></span>
             <strong>${chf(totale)}</strong>
         </div>`;
     return totale;
 }
 
-$("#lavare").addEventListener("change", aggiornaTicket);
 $("#pagato").addEventListener("change", aggiornaTicket);
 
 /*
@@ -558,9 +609,10 @@ function controllaTelefono(n){
     }
     return "";
 }
+/* I capi da lavare hanno il chip evidenziato con "+ lavaggio". */
 const chipsCapi = o => CAPI.filter(c => o[c.k] > 0)
-    .map(c => `<span class="chip"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}</span>`).join("") +
-    (o.lavare ? '<span class="chip chip-lavare">da lavare</span>' : "");
+    .map(c => `<span class="chip${daLavare(o, c) ? " chip-lavare" : ""}"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${daLavare(o, c) ? " + lavaggio" : ""}</span>`)
+    .join("");
 
 const badgePagamento = o => o.pagato
     ? '<span class="pagamento pagamento-si">Pagato</span>'
@@ -586,7 +638,7 @@ function aggiornaTicket(){
                     <span class="muted">${esc(o.nome)} ${esc(o.cognome)} · <span class="mono">${esc(telefonoLeggibile(o.telefono))}</span></span>
                     <span class="ticket-importo">
                         <strong>${chf(o.importo)}</strong>
-                        <span>${o.lavare ? "lavaggio e stiratura" : "solo stiratura"}</span>
+                        <span>${descriviServizio(o, lavaggiDi(o))}</span>
                         ${badgePagamento(o)}
                     </span>
                 </div>
@@ -707,7 +759,7 @@ $("#formOrdine").addEventListener("submit", async e => {
         sede: utente.sede || sedeOrdine,
         nome, cognome, telefono, ...capi,
         ritiro: ritiroScelto,
-        lavare: $("#lavare").checked,
+        ...Object.fromEntries(CAPI.map(c => [campoLavare(c), $("#" + campoLavare(c)).checked && capi[c.k] > 0])),
         pagato: $("#pagato").checked
     }).select().single();
 
@@ -740,7 +792,8 @@ function nuovoOrdine(mettiFuoco = true){
     bloccaModulo(false);
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
     CAPI.forEach(c => $("#" + c.k).value = 0);
-    $("#lavare").checked = false;
+    $$("[data-lavare]").forEach(box => box.checked = false);
+    aggiornaLavareTutto();
     $("#pagato").checked = false;
     mostraErroreOrdine("");
     aggiornaTicket();
@@ -1176,10 +1229,19 @@ function telefonoLeggibile(n){
         : "+" + n;
 }
 
-const testoCapiEtichetta = o => CAPI.filter(c => o[c.k] > 0)
-    .map(c => o[c.k] + " " + (o[c.k] === 1 ? c.uno : c.nome.toLowerCase()))
-    .concat(o.lavare ? ["DA LAVARE"] : [])
-    .join(" · ");
+/*
+Capi sull'etichetta. Se qualcosa è da lavare, due righe separate:
+  "LAVARE: 2 camicie · 1 cesta"  e  "STIRARE: 1 lenzuolo"
+*/
+function righeCapiEtichetta(o){
+    const elenco = lista => lista.map(c => o[c.k] + " " + (o[c.k] === 1 ? c.uno : c.nome.toLowerCase())).join(" · ");
+    const presenti = CAPI.filter(c => o[c.k] > 0);
+    const lavare = presenti.filter(c => daLavare(o, c));
+    const stirare = presenti.filter(c => !daLavare(o, c));
+    if(!lavare.length) return [elenco(stirare)];
+    return ["LAVARE: " + elenco(lavare)].concat(stirare.length ? ["STIRARE: " + elenco(stirare)] : []);
+}
+const testoCapiEtichetta = o => righeCapiEtichetta(o).join(" — ");
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
 
@@ -1197,7 +1259,7 @@ function apriConferma(o){
                 <strong>${esc(o.nome)} ${esc(o.cognome)}</strong>
                 <span>${esc(telefonoLeggibile(o.telefono))} · registrato il ${pad(daISO(creato).getDate())}.${pad(daISO(creato).getMonth()+1)}. alle ${o.creato.slice(11)}</span>
             </div>
-            <div class="et-capi">${esc(testoCapiEtichetta(o))}</div>
+            <div class="et-capi">${righeCapiEtichetta(o).map(r => `<div>${esc(r)}</div>`).join("")}</div>
             <div class="et-ritiro">
                 <div class="et-ritiro-testo">
                     <span>Ritiro</span>
@@ -1228,17 +1290,18 @@ function apriRicevuta(o){
             <dt>Registrato il</dt><dd>${dataLunga(daISO(creato))}, ore ${o.creato.slice(11)}</dd>
             <dt>Sede</dt><dd>${SEDI[o.sede]}</dd>
         </dl>
-        <h2>Capi consegnati · ${o.lavare ? "lavaggio e stiratura" : "solo stiratura"}</h2>
+        <h2>Capi consegnati</h2>
         <table class="doc-tab">
-            <thead><tr><th>Capo</th><th class="n">Quantità</th><th class="n">Prezzo</th><th class="n">Totale</th></tr></thead>
+            <thead><tr><th>Capo</th><th>Servizio</th><th class="n">Quantità</th><th class="n">Prezzo</th><th class="n">Totale</th></tr></thead>
             <tbody>${CAPI.filter(c => o[c.k] > 0).map(c => `
                 <tr>
                     <td>${c.nome}</td>
+                    <td>${daLavare(o, c) ? "Lavaggio e stiratura" : "Stiratura"}</td>
                     <td class="n">${o[c.k]}</td>
-                    <td class="n">${chf(prezzoUnitario(c, o.lavare))}</td>
-                    <td class="n">${chf(o[c.k] * prezzoUnitario(c, o.lavare))}</td>
+                    <td class="n">${chf(prezzoUnitario(c, daLavare(o, c)))}</td>
+                    <td class="n">${chf(o[c.k] * prezzoUnitario(c, daLavare(o, c)))}</td>
                 </tr>`).join("")}</tbody>
-            <tfoot><tr><td colspan="3">Totale</td><td class="n">${chf(o.importo)}</td></tr></tfoot>
+            <tfoot><tr><td colspan="4">Totale</td><td class="n">${chf(o.importo)}</td></tr></tfoot>
         </table>
         <div class="doc-pagamento ${o.pagato ? "pagato" : ""}">
             <strong>${o.pagato ? "Pagato" : "Da pagare al ritiro"}</strong>
@@ -1304,7 +1367,9 @@ function pdfEtichetta(o){
     /* Capi */
     pdf.setFont("helvetica","bold");
     pdf.setFontSize(9);
-    pdf.splitTextToSize(testoCapiEtichetta(o), larghezza).slice(0,2)
+    righeCapiEtichetta(o)
+        .flatMap(riga => pdf.splitTextToSize(riga, larghezza))
+        .slice(0,2)
         .forEach((riga, i) => pdf.text(riga, sx, 29.8 + i * 3.8));
 
     /* Ritiro */
@@ -1346,8 +1411,8 @@ function righeCapi(lavori){
             <tr>
                 <td><span class="spunta"></span></td>
                 <td class="n">${i+1}</td>
-                <td><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span class="piccolo">#${numeroOrdine(o.id)} · ${SEDI[o.sede]}${o.lavare ? " · DA LAVARE" : ""} · ${nota}</span></td>
-                ${CAPI.map(c => `<td class="n">${o[c.k] || "–"}</td>`).join("")}
+                <td><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span class="piccolo">#${numeroOrdine(o.id)} · ${SEDI[o.sede]} · ${nota}</span></td>
+                ${CAPI.map(c => `<td class="n">${o[c.k] ? o[c.k] + (daLavare(o, c) ? " L" : "") : "–"}</td>`).join("")}
                 <td class="n">${durata(l.minuti)}</td>
             </tr>`;
     }).join("");
@@ -1369,7 +1434,7 @@ function apriPianoGiorno(iso){
             <tbody>${righeCapi(lavori)}</tbody>
             <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}<td class="n">${durata(minuti)}</td></tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da stirare in questo giorno.</p>'}
-        <p class="doc-nota">Le quantità sono quelle dell'intero ordine; il tempo è la parte prevista per questo giorno. Spuntare la casella a lavoro finito.</p>`;
+        <p class="doc-nota">Le quantità sono quelle dell'intero ordine; <b>L</b> = da lavare prima di stirare. Il tempo è la parte prevista per questo giorno. Spuntare la casella a lavoro finito.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
 }
