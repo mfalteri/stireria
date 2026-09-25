@@ -159,7 +159,7 @@ async function ricarica(){
     aggiornaBadge();
     if(vista === "nuovo" && !ordineRegistrato) aggiornaTicket();
     if(vista === "ordini") disegnaOrdini();
-    if(vista === "piano" && !(attivo && attivo.closest && attivo.closest("#vista-piano input"))) disegnaPiano();
+    if((vista === "piano" || vista === "consegne") && !(attivo && attivo.closest && attivo.closest("#vista-piano input"))) disegnaPiano();
 }
 
 const isAdmin = () => utente && utente.ruolo === "admin";
@@ -276,7 +276,7 @@ function entra(profilo){
     $("#separatoreFiltri").hidden = !isAdmin();
     $("#barraPianoAdmin").hidden = !isAdmin();
     $("#barraSedeConsegne").hidden = !isAdmin();
-    $("#tab-piano").firstChild.textContent = isAdmin() ? "Piano settimanale" : "Piano consegne";
+    $("#tab-piano").hidden = !isAdmin();
     $("#ordiniAmbito").textContent = isAdmin() ? "Tutte le sedi" : "Sede " + utente.nome;
 
     sedeOrdine = utente.sede || "emporio";
@@ -293,7 +293,7 @@ function entra(profilo){
 
     let vista = "nuovo";
     try{ vista = sessionStorage.getItem("frequenze-stireria-vista") || vista; }catch(e){}
-    if(["nuovo","ordini","piano"].includes(location.hash.slice(1))) vista = location.hash.slice(1);
+    if(["nuovo","ordini","piano","consegne"].includes(location.hash.slice(1))) vista = location.hash.slice(1);
     apriVista(vista);
 
     clearInterval(timerAggiornamento);
@@ -384,13 +384,27 @@ document.addEventListener("visibilitychange", () => { if(!document.hidden) ricar
 
 /* ---------- Navigazione ---------- */
 
+/*
+Viste: "nuovo", "ordini", "piano" (carico della stireria, solo admin)
+e "consegne" (piano consegne: admin per tutte le sedi, le sedi per la propria).
+Piano settimanale e piano consegne usano la stessa sezione della pagina.
+*/
 function apriVista(vista){
+    if(vista === "piano" && !isAdmin()) vista = "consegne";
+    if(!["nuovo","ordini","piano","consegne"].includes(vista)) vista = "nuovo";
+
     $$(".scheda").forEach(b => b.setAttribute("aria-selected", String(b.dataset.vista === vista)));
-    ["nuovo","ordini","piano"].forEach(v => $("#vista-" + v).hidden = v !== vista);
+    const sezione = vista === "consegne" ? "piano" : vista;
+    ["nuovo","ordini","piano"].forEach(v => $("#vista-" + v).hidden = v !== sezione);
+    $("#vista-piano").setAttribute("aria-labelledby", vista === "consegne" ? "tab-consegne" : "tab-piano");
     try{ sessionStorage.setItem("frequenze-stireria-vista", vista); }catch(e){}
+
     if(vista === "nuovo") aggiornaTicket();
     if(vista === "ordini") disegnaOrdini();
-    if(vista === "piano") disegnaPiano();
+    if(sezione === "piano"){
+        vistaPiano = vista === "consegne" ? "consegne" : "carico";
+        disegnaPiano();
+    }
 }
 
 $$(".scheda").forEach(b => b.addEventListener("click", () => apriVista(b.dataset.vista)));
@@ -402,7 +416,6 @@ function aggiornaSegmenti(){
     $$("#sceltaSede button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sede === sedeOrdine)));
     $$("#filtriSede button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sede === filtroSede)));
     $$("#filtriStato button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.stato === filtroStato)));
-    $$("#sceltaPiano button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.piano === vistaPiano)));
     $$("#filtriSedeConsegne button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sede === sedeConsegne)));
     $$("#tipoStampa button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tipo === tipoStampa)));
 }
@@ -410,7 +423,6 @@ function aggiornaSegmenti(){
 $$("#sceltaSede button").forEach(b => b.addEventListener("click", () => { sedeOrdine = b.dataset.sede; aggiornaSegmenti(); aggiornaTicket(); }));
 $$("#filtriSede button").forEach(b => b.addEventListener("click", () => { filtroSede = b.dataset.sede; aggiornaSegmenti(); disegnaOrdini(); }));
 $$("#filtriStato button").forEach(b => b.addEventListener("click", () => { filtroStato = b.dataset.stato; aggiornaSegmenti(); disegnaOrdini(); }));
-$$("#sceltaPiano button").forEach(b => b.addEventListener("click", () => { vistaPiano = b.dataset.piano; aggiornaSegmenti(); disegnaPiano(); }));
 $$("#filtriSedeConsegne button").forEach(b => b.addEventListener("click", () => { sedeConsegne = b.dataset.sede; aggiornaSegmenti(); disegnaConsegne(); }));
 
 /* ---------- Domanda sì / no (i dialoghi del browser non sono disponibili ovunque) ---------- */
@@ -742,11 +754,11 @@ function nuovoOrdine(mettiFuoco = true){
 
 $("#svuota").addEventListener("click", () => nuovoOrdine());
 
-/* Prima di chiudere si verifica che la conferma (etichetta o ricevuta) sia stata stampata. */
+/* Prima di chiudere si verifica che l'etichetta sia stata stampata. */
 async function confermaEChiudi(){
     const stampata = await chiedi(
-        "La conferma d'ordine è stata stampata?",
-        "Etichetta o ricevuta.",
+        "Hai stampato l'etichetta?",
+        "",
         [{ valore:"no", testo:"No" }, { valore:"si", testo:"Sì", primario:true }]
     );
     if(stampata === "si") return nuovoOrdine();
@@ -754,15 +766,10 @@ async function confermaEChiudi(){
 
     const stampare = await chiedi(
         "Vuoi stamparla?",
-        "Si apre il PDF pronto da stampare.",
-        [
-            { valore:"no", testo:"No" },
-            { valore:"ricevuta", testo:"Sì, ricevuta A4" },
-            { valore:"etichetta", testo:"Sì, etichetta", primario:true }
-        ]
+        "Si apre l'etichetta 100 × 62 mm, pronta da stampare.",
+        [{ valore:"no", testo:"No" }, { valore:"si", testo:"Sì", primario:true }]
     );
-    if(stampare === "etichetta") return apriConferma(ordineRegistrato);
-    if(stampare === "ricevuta") return apriRicevuta(ordineRegistrato);
+    if(stampare === "si") return apriConferma(ordineRegistrato);
     if(stampare === "no") return nuovoOrdine();
 }
 
@@ -909,15 +916,18 @@ function disegnaPiano(){
     const venerdi = daISO(date[4]);
     const numero = numeroSettimana(lunediVisto);
 
-    $("#titoloSettimana").textContent = isAdmin() ? "Settimana " + numero : "Consegne · settimana " + numero;
+    const carico = isAdmin() && vistaPiano === "carico";
+    const ambito = isAdmin() ? "Tutte le sedi" : "Sede " + utente.nome;
+
+    $("#titoloSettimana").textContent = carico ? "Settimana " + numero : "Consegne · settimana " + numero;
     $("#intervalloSettimana").textContent =
-        (isAdmin() ? "" : "Sede " + utente.nome + " · ") +
+        (carico ? "" : ambito + " · ") +
         pad(lunediVisto.getDate()) + "/" + pad(lunediVisto.getMonth()+1) + " – " +
         pad(venerdi.getDate()) + "/" + pad(venerdi.getMonth()+1) + "/" + venerdi.getFullYear();
 
-    const carico = isAdmin() && vistaPiano === "carico";
     $("#pianoCarico").hidden = !carico;
     $("#pianoConsegne").hidden = carico;
+    $("#barraPianoAdmin").hidden = !carico;
 
     if(carico) disegnaCarico();
     else disegnaConsegne();
