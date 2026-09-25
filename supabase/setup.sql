@@ -113,6 +113,34 @@ create table if not exists public.ordini (
     constraint ritiro_dopo_consegna check (ritiro > data)
 );
 
+-- Numeri svizzeri scritti senza prefisso (079…) salvati come 4179…, come li vuole WhatsApp.
+create or replace function public.normalizza_telefono(t text) returns text
+language sql immutable set search_path = public
+as $$
+    select case
+        when n like '00%' then substr(n, 3)
+        when n like '0%'  then '41' || substr(n, 2)
+        else n
+    end
+    from (select regexp_replace(coalesce(t, ''), '\D', '', 'g') as n) x
+$$;
+
+create or replace function public.prepara_ordine() returns trigger
+language plpgsql set search_path = public
+as $$
+begin
+    new.telefono := public.normalizza_telefono(new.telefono);
+    if new.telefono like '410%' then
+        new.telefono := '41' || substr(new.telefono, 4);
+    end if;
+    return new;
+end $$;
+
+drop trigger if exists prepara_ordine on public.ordini;
+create trigger prepara_ordine
+before insert on public.ordini
+for each row execute function public.prepara_ordine();
+
 create index if not exists ordini_data   on public.ordini (data);
 create index if not exists ordini_ritiro on public.ordini (ritiro);
 create index if not exists ordini_sede   on public.ordini (sede);

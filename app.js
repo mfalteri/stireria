@@ -469,7 +469,29 @@ function capiInseriti(){
     return capi;
 }
 
-const normalizzaTelefono = v => { let n = v.replace(/\D/g,""); if(n.startsWith("00")) n = n.slice(2); return n; };
+/*
+Numero in formato internazionale senza "+", come lo vuole WhatsApp.
+I numeri svizzeri si possono scrivere senza prefisso:
+  079 123 45 67  /  +41 79 123 45 67  /  +41 (0)79 123 45 67  /  0041 79 …  →  41791234567
+*/
+function normalizzaTelefono(v){
+    let n = String(v).replace(/\D/g,"");
+    if(n.startsWith("00")) n = n.slice(2);
+    else if(n.startsWith("0")) n = "41" + n.slice(1);
+    if(n.startsWith("410")) n = "41" + n.slice(3);
+    return n;
+}
+
+/* Messaggio d'errore se il numero non è utilizzabile, altrimenti "". */
+function controllaTelefono(n){
+    if(n.startsWith("41") && n.length !== 11){
+        return "Numero svizzero non valido: servono 10 cifre, es. 079 123 45 67.";
+    }
+    if(n.length < 8 || n.length > 15){
+        return "Inserisci il numero di telefono completo (per i numeri esteri con il prefisso, es. +39).";
+    }
+    return "";
+}
 const chipsCapi = o => CAPI.filter(c => o[c.k] > 0)
     .map(c => `<span class="chip"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}</span>`).join("");
 
@@ -509,7 +531,7 @@ function aggiornaTicket(){
             </div>
             <div class="taglio"></div>
             <div class="ticket-corpo passi">
-                <a class="btn btn-wa" id="inviaWhatsApp" href="https://wa.me/${esc(o.telefono)}?text=${encodeURIComponent(messaggioWhatsApp(o))}" target="_blank" rel="noopener">
+                <a class="btn btn-wa" id="inviaWhatsApp" href="https://wa.me/${esc(normalizzaTelefono(o.telefono))}?text=${encodeURIComponent(messaggioWhatsApp(o))}" target="_blank" rel="noopener">
                     <span class="n">1</span>Invia conferma su WhatsApp${whatsappInviato ? '<span class="fatto-segno">Aperto ✓</span>' : ""}
                 </a>
                 <button class="btn" type="button" id="apriConferma">
@@ -605,7 +627,8 @@ $("#formOrdine").addEventListener("submit", async e => {
 
     if(!nome) return mostraErroreOrdine("Inserisci il nome del cliente.","nome");
     if(!cognome) return mostraErroreOrdine("Inserisci il cognome del cliente.","cognome");
-    if(telefono.length < 8) return mostraErroreOrdine("Inserisci il numero di telefono completo, con prefisso.","telefono");
+    const erroreTelefono = controllaTelefono(telefono);
+    if(erroreTelefono) return mostraErroreOrdine(erroreTelefono,"telefono");
     if(minutiCapi(capi) <= 0) return mostraErroreOrdine("Aggiungi almeno un capo da stirare.");
     if(!ritiroScelto) return mostraErroreOrdine("Scegli il giorno di ritiro.");
 
