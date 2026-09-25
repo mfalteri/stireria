@@ -398,6 +398,21 @@ button,input,select{font:inherit;color:inherit;}
     color:var(--ink-3);
 }
 .riga2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.consenso{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    padding:12px 14px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface-2);
+    cursor:pointer;
+}
+.consenso:has(input:checked){border-color:#1FA855;background:color-mix(in srgb, #1FA855 10%, var(--surface));}
+.consenso input{width:20px;height:20px;margin:1px 0 0;flex:none;accent-color:#1FA855;cursor:pointer;}
+.consenso span{display:grid;gap:2px;}
+.consenso strong{font-size:15px;}
+.consenso small{font-size:12.5px;color:var(--ink-3);}
 .capi{display:grid;gap:10px;}
 .capo{
     display:flex;
@@ -1113,8 +1128,15 @@ button,input,select{font:inherit;color:inherit;}
                             </label>
                         </div>
                         <label class="campo">
-                            <span>Telefono (per WhatsApp)</span>
+                            <span>Telefono</span>
                             <input id="telefono" type="tel" inputmode="tel" placeholder="079 123 45 67" autocomplete="off">
+                        </label>
+                        <label class="consenso" for="consensoWhatsApp">
+                            <input id="consensoWhatsApp" type="checkbox">
+                            <span>
+                                <strong>Il cliente accetta messaggi WhatsApp</strong>
+                                <small>Solo con il consenso si può inviare la conferma dell'ordine su WhatsApp.</small>
+                            </span>
                         </label>
                     </fieldset>
 

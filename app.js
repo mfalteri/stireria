@@ -110,9 +110,17 @@ async function caricaDati(){
 
     db.ordini = ordini.map(daRiga);
 
+    /* arrivi: tutti i capi consegnati; carico: solo quelli ancora da stirare
+       (gli ordini "pronto" e "ritirato" non pesano più sulle date di ritiro). */
+    db.arrivi = {};
     db.carico = {};
-    carico.data.forEach(r => db.carico[r.data] = {
-        camicie: Number(r.camicie), lenzuola: Number(r.lenzuola), ceste: Number(r.ceste)
+    carico.data.forEach(r => {
+        db.arrivi[r.data] = { camicie: Number(r.camicie), lenzuola: Number(r.lenzuola), ceste: Number(r.ceste) };
+        db.carico[r.data] = {
+            camicie: Number(r.camicie_aperte) || 0,
+            lenzuola: Number(r.lenzuola_aperte) || 0,
+            ceste: Number(r.ceste_aperte) || 0
+        };
     });
 
     db.prossimo = Number(prossimo.data) || null;
@@ -163,6 +171,7 @@ const capacita = data => turniDi(data) * MINUTI_TURNO;
 const minutiCapi = capi => CAPI.reduce((s,c) => s + (Number(capi[c.k]) || 0) * db.config[c.tempo], 0);
 
 /* Capi arrivati per giorno, di tutte le sedi: la stireria è una sola. */
+/* Solo gli ordini ancora in lavorazione: quelli pronti non occupano più la stireria. */
 const capiPerGiorno = () => db.carico;
 
 const minutiArrivati = (giorni,data) => giorni[data] ? minutiCapi(giorni[data]) : 0;
@@ -209,7 +218,9 @@ Ordine di arrivo; ogni giorno si lavora ciò che è arrivato prima.
 Restituisce { "YYYY-MM-DD": [{ ordine, minuti, inizia, finisce }] }.
 */
 function programmaLavoro(){
-    const ordini = [...db.ordini].sort((a,b) => a.data.localeCompare(b.data) || a.id - b.id);
+    const ordini = db.ordini
+        .filter(o => o.stato === "lavorazione")
+        .sort((a,b) => a.data.localeCompare(b.data) || a.id - b.id);
     const programma = {};
     if(!ordini.length) return programma;
 
@@ -439,7 +450,8 @@ function chiedi(titolo, testo, opzioni){
 
 let ordineRegistrato = null;
 let ritiroScelto = null;
-let confermaAperta = false;
+let etichettaAperta = false;
+let ricevutaAperta = false;
 let whatsappInviato = false;
 
 function disegnaCapi(){
@@ -531,18 +543,28 @@ function aggiornaTicket(){
             </div>
             <div class="taglio"></div>
             <div class="ticket-corpo passi">
+                ${o.consenso_whatsapp ? `
                 <a class="btn btn-wa" id="inviaWhatsApp" href="https://wa.me/${esc(normalizzaTelefono(o.telefono))}?text=${encodeURIComponent(messaggioWhatsApp(o))}" target="_blank" rel="noopener">
                     <span class="n">1</span>Invia conferma su WhatsApp${whatsappInviato ? '<span class="fatto-segno">Aperto ✓</span>' : ""}
-                </a>
-                <button class="btn" type="button" id="apriConferma">
-                    <span class="n">2</span>Apri PDF conferma d'ordine${confermaAperta ? '<span class="fatto-segno">Aperto ✓</span>' : ""}
+                </a>` : `
+                <button class="btn" type="button" disabled title="Il cliente non ha dato il consenso ai messaggi WhatsApp">
+                    <span class="n">1</span>WhatsApp non consentito dal cliente
+                </button>`}
+                <button class="btn" type="button" id="stampaEtichetta">
+                    <span class="n">2</span>Stampa etichetta${etichettaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
+                </button>
+                <button class="btn" type="button" id="stampaRicevuta">
+                    <span class="n">3</span>Stampa ricevuta${ricevutaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
                 </button>
                 <button class="btn btn-primario" type="button" id="confermaChiudi">
-                    <span class="n">3</span>Conferma e chiudi
+                    <span class="n">4</span>Conferma e chiudi
                 </button>
             </div>`;
-        $("#inviaWhatsApp").addEventListener("click", () => { whatsappInviato = true; setTimeout(aggiornaTicket, 300); });
-        $("#apriConferma").addEventListener("click", () => apriConferma(ordineRegistrato));
+        if(o.consenso_whatsapp){
+            $("#inviaWhatsApp").addEventListener("click", () => { whatsappInviato = true; setTimeout(aggiornaTicket, 300); });
+        }
+        $("#stampaEtichetta").addEventListener("click", () => apriConferma(ordineRegistrato));
+        $("#stampaRicevuta").addEventListener("click", () => apriRicevuta(ordineRegistrato));
         $("#confermaChiudi").addEventListener("click", confermaEChiudi);
         return;
     }
@@ -642,7 +664,8 @@ $("#formOrdine").addEventListener("submit", async e => {
         data: dataISO(giornoDeposito(oggi())),
         sede: utente.sede || sedeOrdine,
         nome, cognome, telefono, ...capi,
-        ritiro: ritiroScelto
+        ritiro: ritiroScelto,
+        consenso_whatsapp: $("#consensoWhatsApp").checked
     }).select().single();
 
     if(error){
@@ -656,12 +679,13 @@ $("#formOrdine").addEventListener("submit", async e => {
     ricarica();
 
     ordineRegistrato = ordine;
-    confermaAperta = false;
+    etichettaAperta = false;
+    ricevutaAperta = false;
     whatsappInviato = false;
     bloccaModulo(true);
     aggiornaTicket();
     aggiornaBadge();
-    $("#inviaWhatsApp").focus();
+    ($("#inviaWhatsApp") || $("#stampaEtichetta")).focus();
 });
 
 function bloccaModulo(bloccato){
@@ -673,6 +697,7 @@ function nuovoOrdine(mettiFuoco = true){
     ritiroScelto = null;
     bloccaModulo(false);
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
+    $("#consensoWhatsApp").checked = false;
     CAPI.forEach(c => $("#" + c.k).value = 0);
     mostraErroreOrdine("");
     aggiornaTicket();
@@ -681,11 +706,11 @@ function nuovoOrdine(mettiFuoco = true){
 
 $("#svuota").addEventListener("click", () => nuovoOrdine());
 
-/* Prima di chiudere si verifica che la conferma sia stata stampata. */
+/* Prima di chiudere si verifica che la conferma (etichetta o ricevuta) sia stata stampata. */
 async function confermaEChiudi(){
     const stampata = await chiedi(
         "La conferma d'ordine è stata stampata?",
-        "",
+        "Etichetta o ricevuta.",
         [{ valore:"no", testo:"No" }, { valore:"si", testo:"Sì", primario:true }]
     );
     if(stampata === "si") return nuovoOrdine();
@@ -693,10 +718,15 @@ async function confermaEChiudi(){
 
     const stampare = await chiedi(
         "Vuoi stamparla?",
-        "Si apre il PDF della conferma d'ordine, pronto da stampare.",
-        [{ valore:"no", testo:"No" }, { valore:"si", testo:"Sì", primario:true }]
+        "Si apre il PDF pronto da stampare.",
+        [
+            { valore:"no", testo:"No" },
+            { valore:"ricevuta", testo:"Sì, ricevuta A4" },
+            { valore:"etichetta", testo:"Sì, etichetta", primario:true }
+        ]
     );
-    if(stampare === "si") return apriConferma(ordineRegistrato);
+    if(stampare === "etichetta") return apriConferma(ordineRegistrato);
+    if(stampare === "ricevuta") return apriRicevuta(ordineRegistrato);
     if(stampare === "no") return nuovoOrdine();
 }
 
@@ -754,7 +784,8 @@ function disegnaOrdini(){
                 <td>
                     <div class="azioni-riga">
                         ${avanti ? `<button class="btn btn-piccolo" data-avanza="${o.id}" data-stato="${avanti[0]}">${avanti[1]}</button>` : ""}
-                        <button class="btn btn-piccolo" data-conferma="${o.id}">PDF</button>
+                        <button class="btn btn-piccolo" data-conferma="${o.id}">Etichetta</button>
+                        <button class="btn btn-piccolo" data-ricevuta="${o.id}">Ricevuta</button>
                         ${isAdmin() ? `<button class="btn btn-piccolo btn-pericolo" data-elimina="${o.id}">Elimina</button>` : ""}
                     </div>
                 </td>
@@ -781,9 +812,14 @@ $("#righeOrdini").addEventListener("click", async e => {
         db.ordini.find(x => x.id === id).stato = avanza.dataset.stato;
         disegnaOrdini();
         avvisa("Ordine #" + numeroOrdine(id) + ": " + STATI[avanza.dataset.stato].toLowerCase());
+        ricarica();   /* un ordine pronto libera la coda: le date di ritiro si aggiornano */
     }
     if(pdf){
         apriConferma(db.ordini.find(x => x.id === Number(pdf.dataset.conferma)));
+    }
+    const ricevuta = e.target.closest("[data-ricevuta]");
+    if(ricevuta){
+        apriRicevuta(db.ordini.find(x => x.id === Number(ricevuta.dataset.ricevuta)));
     }
     if(elimina){
         if(!elimina.classList.contains("conferma")){
@@ -840,23 +876,26 @@ function disegnaCarico(){
         if(document.activeElement !== $("#" + id)) $("#" + id).value = db.config[id];
     });
 
-    const giorni = capiPerGiorno();
+    /* Il lavoro residuo conta solo gli ordini in lavorazione;
+       le colonne dei capi mostrano tutto ciò che è arrivato. */
+    const aperti = capiPerGiorno();
+    const arrivi = db.arrivi || {};
     const oggiI = oggiISO();
-    const arretrato = codaAllInizio(giorni, date[0]);
+    const arretrato = codaAllInizio(aperti, date[0]);
 
     let coda = arretrato;
     let arrivatoTot = 0, capacitaTot = 0, ultimoLavorato = -1;
 
     $("#righeGiorni").innerHTML = date.map((d,i) => {
         const cap = capacita(d);
-        const arrivato = minutiArrivati(giorni,d);
+        const arrivato = minutiArrivati(arrivi,d);
         const eseguito = Math.min(coda, cap);
         const perc = cap > 0 ? eseguito / cap * 100 : 0;
         if(eseguito > 0) ultimoLavorato = i;
-        coda = Math.max(0, coda - cap) + arrivato;
+        coda = Math.max(0, coda - cap) + minutiArrivati(aperti,d);
         arrivatoTot += arrivato;
         capacitaTot += cap;
-        const g = giorni[d] || { camicie:0, lenzuola:0, ceste:0 };
+        const g = arrivi[d] || { camicie:0, lenzuola:0, ceste:0 };
         const giorno = daISO(d);
 
         return `
@@ -1074,10 +1113,44 @@ function apriConferma(o){
 
     const nome = creato + "_" + numeroOrdine(o.id) + "_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
     if(ordineRegistrato && o.id === ordineRegistrato.id){
-        confermaAperta = true;
+        etichettaAperta = true;
         aggiornaTicket();
     }
-    mostraDocumento("Conferma d'ordine N° " + numeroOrdine(o.id), html, nome, "etichetta", o);
+    mostraDocumento("Etichetta ordine N° " + numeroOrdine(o.id), html, nome, "etichetta", o);
+}
+
+/* Ricevuta dell'ordine su foglio A4. */
+function apriRicevuta(o){
+    const creato = o.creato.slice(0,10);
+    const html = testaDocumento("Ordine", "N° " + numeroOrdine(o.id), "Stireria · Sede " + SEDI[o.sede]) + `
+        <h1>Ricevuta d'ordine</h1>
+        <p class="sottotitolo">Grazie per averci affidato i suoi capi.</p>
+        <dl class="doc-kv">
+            <dt>Cliente</dt><dd>${esc(o.nome)} ${esc(o.cognome)}</dd>
+            <dt>Telefono</dt><dd>${esc(telefonoLeggibile(o.telefono))}</dd>
+            <dt>Registrato il</dt><dd>${dataLunga(daISO(creato))}, ore ${o.creato.slice(11)}</dd>
+            <dt>Sede</dt><dd>${SEDI[o.sede]}</dd>
+            <dt>Avvisi WhatsApp</dt><dd>${o.consenso_whatsapp ? "Sì" : "No"}</dd>
+        </dl>
+        <h2>Capi consegnati</h2>
+        <table class="doc-tab">
+            <thead><tr><th>Capo</th><th class="n">Quantità</th></tr></thead>
+            <tbody>${CAPI.filter(c => o[c.k] > 0).map(c => `<tr><td>${c.nome}</td><td class="n">${o[c.k]}</td></tr>`).join("")}</tbody>
+        </table>
+        <div class="doc-ritiro">
+            <span>Ritiro</span>
+            <strong>${dataLunga(daISO(o.ritiro))}</strong>
+            <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
+        </div>
+        <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>
+        <div class="doc-firma"><div>Firma dell'operatore</div><div>Firma del cliente</div></div>`;
+
+    const nome = creato + "_" + numeroOrdine(o.id) + "_ricevuta_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
+    if(ordineRegistrato && o.id === ordineRegistrato.id){
+        ricevutaAperta = true;
+        aggiornaTicket();
+    }
+    mostraDocumento("Ricevuta ordine N° " + numeroOrdine(o.id), html, nome, "a4", o);
 }
 
 /*

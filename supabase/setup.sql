@@ -141,6 +141,10 @@ create trigger prepara_ordine
 before insert on public.ordini
 for each row execute function public.prepara_ordine();
 
+-- Consenso del cliente a ricevere messaggi WhatsApp
+alter table public.ordini
+    add column if not exists consenso_whatsapp boolean not null default false;
+
 create index if not exists ordini_data   on public.ordini (data);
 create index if not exists ordini_ritiro on public.ordini (ritiro);
 create index if not exists ordini_sede   on public.ordini (sede);
@@ -150,12 +154,23 @@ create index if not exists ordini_sede   on public.ordini (sede);
 -- Calcolo del carico: la stireria è una sola, quindi la data di ritiro
 -- tiene conto degli ordini di tutte le sedi. Le sedi non vedono gli
 -- ordini delle altre: ricevono solo i totali per giorno, senza nomi.
+-- Gli ordini segnati "pronto" o "ritirato" non pesano più sulle date
+-- di ritiro: contano solo i capi "aperti" (ancora in lavorazione).
 -- ---------------------------------------------------------------------
-create or replace function public.carico_giornaliero()
-returns table (data date, camicie bigint, lenzuola bigint, ceste bigint)
+drop function if exists public.carico_giornaliero();
+create function public.carico_giornaliero()
+returns table (
+    data date,
+    camicie bigint, lenzuola bigint, ceste bigint,                 -- tutti i capi arrivati
+    camicie_aperte bigint, lenzuola_aperte bigint, ceste_aperte bigint  -- solo ordini in lavorazione
+)
 language sql stable security definer set search_path = public
 as $$
-    select o.data, sum(o.camicie), sum(o.lenzuola), sum(o.ceste)
+    select o.data,
+           sum(o.camicie), sum(o.lenzuola), sum(o.ceste),
+           sum(o.camicie)  filter (where o.stato = 'lavorazione'),
+           sum(o.lenzuola) filter (where o.stato = 'lavorazione'),
+           sum(o.ceste)    filter (where o.stato = 'lavorazione')
     from public.ordini o
     where public.mio_ruolo() is not null
     group by o.data
