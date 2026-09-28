@@ -1426,7 +1426,7 @@ function apriPianoGiorno(iso){
 
     const html = testaDocumento("Piano di lavoro", dataBreve(d), "Stireria · piano giornaliero") + `
         <h1>${dataLunga(d)}</h1>
-        <p class="sottotitolo">${turniDi(iso)} turni da 4 ore · capacità ${durata(capacita(iso))} · lavoro previsto ${durata(minuti)} · ${lavori.length} ordini in ordine di arrivo</p>
+        <p class="sottotitolo">${lavori.length} ordini in ordine di arrivo</p>
         <h2>Ordini da stirare</h2>
         ${lavori.length ? `
         <table class="doc-tab">
