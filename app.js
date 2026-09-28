@@ -1413,7 +1413,6 @@ function righeCapi(lavori){
                 <td class="n">${i+1}</td>
                 <td><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span class="piccolo">#${numeroOrdine(o.id)} · ${SEDI[o.sede]} · ${nota}</span></td>
                 ${CAPI.map(c => `<td class="n">${o[c.k] ? o[c.k] + (daLavare(o, c) ? " L" : "") : "–"}</td>`).join("")}
-                <td class="n">${durata(l.minuti)}</td>
             </tr>`;
     }).join("");
 }
@@ -1422,7 +1421,6 @@ function apriPianoGiorno(iso){
     const d = daISO(iso);
     const lavori = programmaLavoro()[iso] || [];
     const totale = CAPI.reduce((t,c) => (t[c.k] = lavori.reduce((s,l) => s + l.ordine[c.k], 0), t), {});
-    const minuti = lavori.reduce((s,l) => s + l.minuti, 0);
 
     const html = testaDocumento("Piano di lavoro", dataBreve(d), "Stireria · piano giornaliero") + `
         <h1>${dataLunga(d)}</h1>
@@ -1430,11 +1428,11 @@ function apriPianoGiorno(iso){
         <h2>Ordini da stirare</h2>
         ${lavori.length ? `
         <table class="doc-tab">
-            <thead><tr><th></th><th class="n">#</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}<th class="n">Tempo</th></tr></thead>
+            <thead><tr><th></th><th class="n">#</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}</tr></thead>
             <tbody>${righeCapi(lavori)}</tbody>
-            <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}<td class="n">${durata(minuti)}</td></tr></tfoot>
+            <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da stirare in questo giorno.</p>'}
-        <p class="doc-nota">Le quantità sono quelle dell'intero ordine; <b>L</b> = da lavare prima di stirare. Il tempo è la parte prevista per questo giorno. Spuntare la casella a lavoro finito.</p>`;
+        <p class="doc-nota">Le quantità sono quelle dell'intero ordine; <b>L</b> = da lavare prima di stirare. Spuntare la casella a lavoro finito.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
 }
