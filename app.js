@@ -1432,7 +1432,7 @@ function apriPianoGiorno(iso){
             <tbody>${righeCapi(lavori)}</tbody>
             <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da stirare in questo giorno.</p>'}
-        <p class="doc-nota">Le quantità sono quelle dell'intero ordine; <b>L</b> = da lavare prima di stirare. Spuntare la casella a lavoro finito.</p>`;
+        <p class="doc-nota"><b>L</b> = da lavare prima di stirare. Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
 }
