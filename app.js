@@ -1215,18 +1215,21 @@ function testaDocumento(riferimentoEtichetta, riferimento, sottotitolo){
         </div>`;
 }
 
-/* Documento in anteprima: "a4" (ricevuta, piani di lavoro) o "etichette" (4 etichette su un A4). */
+/* Documento in anteprima: "a4" (ricevuta, piani di lavoro) o "etichette" (una per tipo di capo). */
 let documentoCorrente = { tipo:"a4", ordine:null };
 
-/* Etichette: il foglio A4 è diviso in 4 strisce uguali (210 × 74,25 mm);
-   in ognuna l'etichetta 100 × 62 mm è ingrandita e centrata. */
-const SCALA_ETICHETTA = 1.1;
+/*
+Etichette: una per ogni tipo di capo dell'ordine, sempre 97 × 138 mm.
+Ogni foglio A4 è diviso in 4 riquadri uguali (105 × 148,5 mm): fino a 4 etichette
+per foglio, dalla quinta si passa a un nuovo foglio.
+*/
+const ETICHETTA = { larghezza:97, altezza:138, riquadroL:105, riquadroA:148.5, perFoglio:4 };
 
 function mostraDocumento(titolo, html, nomeFile, tipo = "a4", ordine = null){
     documentoCorrente = { tipo, ordine };
     $("#anteprimaTitolo").textContent = titolo;
     $("#anteprimaNota").textContent = tipo === "etichette"
-        ? "4 etichette su un foglio A4, da ritagliare lungo le linee · " + nomeFile
+        ? "Una etichetta per tipo di capo, da ritagliare lungo le linee · " + nomeFile
         : nomeFile;
     $("#foglio").innerHTML = html;
     $("#foglio").classList.toggle("foglio-etichette", tipo === "etichette");
@@ -1248,27 +1251,32 @@ function telefonoLeggibile(n){
         : "+" + n;
 }
 
-/*
-Capi sull'etichetta. Se qualcosa è da lavare, due righe separate:
-  "LAVARE: 2 camicie · 1 cesta"  e  "STIRARE: 1 lenzuolo"
-*/
-function righeCapiEtichetta(o){
-    const elenco = lista => lista.map(c => o[c.k] + " " + (o[c.k] === 1 ? c.uno : c.nome.toLowerCase())).join(" · ");
-    const presenti = CAPI.filter(c => o[c.k] > 0);
-    const lavare = presenti.filter(c => daLavare(o, c));
-    const stirare = presenti.filter(c => !daLavare(o, c));
-    if(!lavare.length) return [elenco(stirare)];
-    return ["LAVARE: " + elenco(lavare)].concat(stirare.length ? ["STIRARE: " + elenco(stirare)] : []);
+/* Tipi di capo presenti nell'ordine: una etichetta per ciascuno. */
+const capiEtichette = o => CAPI.filter(c => o[c.k] > 0);
+const nomeCapo = (c, n) => n === 1 ? c.uno : c.nome.toLowerCase();
+const servizioCapo = (o, c) => daLavare(o, c) ? "DA LAVARE E STIRARE" : "SOLO DA STIRARE";
+
+function altriCapi(o, c){
+    const altri = capiEtichette(o).filter(x => x !== c);
+    return altri.length
+        ? "Nello stesso ordine: " + altri.map(x => o[x.k] + " " + nomeCapo(x, o[x.k])).join(" · ")
+        : "Unico tipo di capo dell'ordine";
 }
-const testoCapiEtichetta = o => righeCapiEtichetta(o).join(" — ");
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
 
-/* Etichetta dell'ordine: 4 copie uguali su un foglio A4. */
-function apriConferma(o){
-    const creato = o.creato.slice(0,10);
-    const etichetta = `
-        <div class="etichetta">
+/* Divide le etichette in fogli da 4. */
+function fogliEtichette(o){
+    const capi = capiEtichette(o);
+    const fogli = [];
+    for(let i = 0; i < capi.length; i += ETICHETTA.perFoglio) fogli.push(capi.slice(i, i + ETICHETTA.perFoglio));
+    return fogli;
+}
+
+function htmlEtichetta(o, c, indice, totale){
+    const creato = daISO(o.creato.slice(0,10));
+    return `
+        <div class="et">
             <div class="et-testa">
                 <img src="${LOGO}" alt="Frequenze">
                 <div class="et-ente"><strong>ASSOCIAZIONE FREQUENZE</strong><span>Stireria · ${SEDI[o.sede]}</span></div>
@@ -1276,21 +1284,35 @@ function apriConferma(o){
             </div>
             <div class="et-cliente">
                 <strong>${esc(o.nome)} ${esc(o.cognome)}</strong>
-                <span>${esc(telefonoLeggibile(o.telefono))} · registrato il ${pad(daISO(creato).getDate())}.${pad(daISO(creato).getMonth()+1)}. alle ${o.creato.slice(11)}</span>
+                <span>${esc(telefonoLeggibile(o.telefono))} · registrato il ${pad(creato.getDate())}.${pad(creato.getMonth()+1)}. alle ${o.creato.slice(11)}</span>
             </div>
-            <div class="et-capi">${righeCapiEtichetta(o).map(r => `<div>${esc(r)}</div>`).join("")}</div>
+            <div class="et-capo${daLavare(o, c) ? " lavare" : ""}">
+                <span class="et-indice">Etichetta ${indice} di ${totale}</span>
+                <b class="et-quantita">${o[c.k]}</b>
+                <strong class="et-categoria">${nomeCapo(c, o[c.k])}</strong>
+                <span class="et-servizio">${servizioCapo(o, c)}</span>
+            </div>
+            <div class="et-altri">${esc(altriCapi(o, c))}</div>
             <div class="et-ritiro">
-                <div class="et-ritiro-testo">
-                    <span>Ritiro</span>
-                    <strong>${dataPunti(daISO(o.ritiro))}</strong>
-                    <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
-                </div>
+                <span>Ritiro</span>
+                <strong>${dataPunti(daISO(o.ritiro))}</strong>
+                <small>${ORA_RITIRO}</small>
+                <small>presso ${SEDI[o.sede]}</small>
                 ${o.pagato ? '<b class="et-pagato">PAGATO</b>' : ""}
             </div>
         </div>`;
+}
 
-    const html = [1,2,3,4].map(() =>
-        `<div class="striscia"><div class="etichetta-scala">${etichetta}</div></div>`).join("");
+/* Etichette dell'ordine: una per tipo di capo, 4 riquadri per foglio A4. */
+function apriConferma(o){
+    const creato = o.creato.slice(0,10);
+    const totale = capiEtichette(o).length;
+    let indice = 0;
+
+    const html = fogliEtichette(o).map(foglio => `
+        <div class="pagina-etichette">
+            ${[0,1,2,3].map(i => `<div class="riquadro">${foglio[i] ? htmlEtichetta(o, foglio[i], ++indice, totale) : ""}</div>`).join("")}
+        </div>`).join("");
 
     const nome = creato + "_" + numeroOrdine(o.id) + "_etichette_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
     if(ordineRegistrato && o.id === ordineRegistrato.id){
@@ -1345,96 +1367,120 @@ function apriRicevuta(o){
 }
 
 /*
-Disegna un'etichetta (progettata a 100 × 62 mm) nel PDF, con l'angolo in
-alto a sinistra in (x0, y0) e ingrandita di "s". Testo vettoriale, solo nero.
+Disegna nel PDF l'etichetta di un tipo di capo (97 × 138 mm) con l'angolo
+in alto a sinistra in (x0, y0). Testo vettoriale, solo nero.
 */
-function disegnaEtichetta(pdf, o, x0, y0, s){
-    const X = x => x0 + x * s, Y = y => y0 + y * s, F = pt => pt * s;
-    const sx = 4, dx = 96, larghezza = dx - sx;
+function disegnaEtichetta(pdf, o, c, indice, totale, x0, y0){
+    const X = x => x0 + x, Y = y => y0 + y;
+    const W = ETICHETTA.larghezza, sx = 4, dx = W - 4, larghezza = dx - sx;
     const creato = daISO(o.creato.slice(0,10));
     const taglia = (testo, max) => pdf.splitTextToSize(testo, max)[0];
+    const lavare = daLavare(o, c);
 
     pdf.setTextColor(0);
     pdf.setDrawColor(0);
 
     /* Intestazione */
-    pdf.addImage(LOGO, "PNG", X(sx), Y(3.2), 7.8 * s, 9 * s);
+    pdf.addImage(LOGO, "PNG", X(sx), Y(4), 9, 10.4);
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(F(7.5));
-    pdf.text("ASSOCIAZIONE FREQUENZE", X(sx + 10), Y(6.8));
+    pdf.setFontSize(8.5);
+    pdf.text("ASSOCIAZIONE FREQUENZE", X(sx + 11.4), Y(8.8));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(F(6.5));
-    pdf.text("Stireria · " + SEDI[o.sede], X(sx + 10), Y(10));
+    pdf.setFontSize(7.5);
+    pdf.text("Stireria · " + SEDI[o.sede], X(sx + 11.4), Y(12.8));
 
-    pdf.setFontSize(F(5.5));
-    pdf.text("ORDINE", X(dx), Y(5.8), { align:"right", charSpace:0.3 * s });
+    pdf.setFontSize(6.5);
+    pdf.text("ORDINE", X(dx), Y(7.6), { align:"right", charSpace:0.3 });
     pdf.setFont("courier","bold");
-    pdf.setFontSize(F(14));
-    pdf.text("N° " + numeroOrdine(o.id), X(dx), Y(11.2), { align:"right" });
+    pdf.setFontSize(17);
+    pdf.text("N° " + numeroOrdine(o.id), X(dx), Y(14.2), { align:"right" });
 
-    pdf.setLineWidth(0.35 * s);
-    pdf.line(X(sx), Y(13.6), X(dx), Y(13.6));
+    pdf.setLineWidth(0.4);
+    pdf.line(X(sx), Y(17.6), X(dx), Y(17.6));
 
     /* Cliente */
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(F(12));
-    pdf.text(taglia(o.nome + " " + o.cognome, larghezza * s), X(sx), Y(19.6));
+    pdf.setFontSize(15);
+    pdf.text(taglia(o.nome + " " + o.cognome, larghezza), X(sx), Y(25.6));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(F(7.5));
+    pdf.setFontSize(8);
     pdf.text(taglia(telefonoLeggibile(o.telefono) + " · registrato il " +
-        pad(creato.getDate()) + "." + pad(creato.getMonth()+1) + ". alle " + o.creato.slice(11), larghezza * s), X(sx), Y(23.8));
+        pad(creato.getDate()) + "." + pad(creato.getMonth()+1) + ". alle " + o.creato.slice(11), larghezza), X(sx), Y(30.8));
 
-    /* Capi */
+    /* Tipo di capo: riquadro nero se da lavare, bianco se solo da stirare */
+    pdf.setLineWidth(0.6);
+    pdf.setFillColor(0);
+    pdf.roundedRect(X(sx), Y(35), larghezza, 50, 2, 2, lavare ? "FD" : "S");
+    pdf.setTextColor(lavare ? 255 : 0);
+    pdf.setFont("helvetica","normal");
+    pdf.setFontSize(7);
+    pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(40.5), { charSpace:0.3 });
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(F(9));
-    righeCapiEtichetta(o)
-        .flatMap(riga => pdf.splitTextToSize(riga, larghezza * s))
-        .slice(0,2)
-        .forEach((riga, i) => pdf.text(riga, X(sx), Y(29.8 + i * 3.8)));
+    pdf.setFontSize(40);
+    pdf.text(String(o[c.k]), X(sx + 4), Y(59));
+    pdf.setFontSize(18);
+    pdf.text(taglia(nomeCapo(c, o[c.k]).toUpperCase(), larghezza - 8), X(sx + 4), Y(69.5));
+    pdf.setFontSize(10);
+    pdf.text(servizioCapo(o, c), X(sx + 4), Y(78.5), { charSpace:0.2 });
+    pdf.setTextColor(0);
+
+    /* Altri capi dello stesso ordine */
+    pdf.setFont("helvetica","normal");
+    pdf.setFontSize(8);
+    pdf.text(taglia(altriCapi(o, c), larghezza), X(sx), Y(92.5));
 
     /* Ritiro */
-    pdf.setLineWidth(0.45 * s);
-    pdf.roundedRect(X(sx), Y(38.5), larghezza * s, 19.5 * s, 1.6 * s, 1.6 * s, "S");
-    pdf.setFont("helvetica","normal");
-    pdf.setFontSize(F(6));
-    pdf.text("RITIRO", X(sx + 3), Y(43), { charSpace:0.3 * s });
+    pdf.setLineWidth(0.5);
+    pdf.roundedRect(X(sx), Y(98.5), larghezza, 35.5, 2, 2, "S");
+    pdf.setFontSize(7);
+    pdf.text("RITIRO", X(sx + 4), Y(105), { charSpace:0.3 });
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(F(14));
-    pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 3), Y(49.6));
+    pdf.setFontSize(17);
+    pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 4), Y(113.5));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(F(7.5));
-    pdf.text(ORA_RITIRO + " · presso " + SEDI[o.sede], X(sx + 3), Y(54.4));
+    pdf.setFontSize(9);
+    pdf.text(ORA_RITIRO, X(sx + 4), Y(120.5));
+    pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.5));
 
-    /* Solo se il cliente ha già pagato: riquadro nero "PAGATO" a destra. */
+    /* Solo se il cliente ha già pagato: riquadro nero "PAGATO" */
     if(o.pagato){
         pdf.setFillColor(0);
-        pdf.roundedRect(X(dx - 26), Y(42), 23 * s, 12.5 * s, 1.2 * s, 1.2 * s, "F");
+        pdf.roundedRect(X(dx - 30), Y(119), 26, 11, 1.2, 1.2, "F");
         pdf.setTextColor(255);
         pdf.setFont("helvetica","bold");
-        pdf.setFontSize(F(11));
-        pdf.text("PAGATO", X(dx - 14.5), Y(49.8), { align:"center" });
+        pdf.setFontSize(11);
+        pdf.text("PAGATO", X(dx - 17), Y(126.4), { align:"center" });
         pdf.setTextColor(0);
     }
 }
 
-/* PDF A4 con 4 copie dell'etichetta, una per striscia, e linee di taglio tratteggiate. */
+/* PDF: fogli A4 con 4 riquadri; un'etichetta per tipo di capo, sempre della stessa grandezza. */
 function pdfEtichetta(o){
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit:"mm", format:"a4" });
-    const s = SCALA_ETICHETTA, altezzaStriscia = 297 / 4;
-    const x0 = (210 - 100 * s) / 2;
+    const { larghezza, altezza, riquadroL, riquadroA } = ETICHETTA;
+    const totale = capiEtichette(o).length;
+    let indice = 0;
 
-    for(let i = 0; i < 4; i++){
-        disegnaEtichetta(pdf, o, x0, i * altezzaStriscia + (altezzaStriscia - 62 * s) / 2, s);
-    }
+    fogliEtichette(o).forEach((foglio, f) => {
+        if(f > 0) pdf.addPage();
 
-    /* Linee di taglio */
-    pdf.setDrawColor(170);
-    pdf.setLineWidth(0.2);
-    pdf.setLineDashPattern([2, 2], 0);
-    for(let i = 1; i < 4; i++) pdf.line(0, i * altezzaStriscia, 210, i * altezzaStriscia);
-    pdf.setLineDashPattern([], 0);
-    pdf.setDrawColor(0);
+        foglio.forEach((c, i) => {
+            const colonna = i % 2, riga = Math.floor(i / 2);
+            disegnaEtichetta(pdf, o, c, ++indice, totale,
+                colonna * riquadroL + (riquadroL - larghezza) / 2,
+                riga * riquadroA + (riquadroA - altezza) / 2);
+        });
+
+        /* Linee di taglio tra i riquadri */
+        pdf.setDrawColor(170);
+        pdf.setLineWidth(0.2);
+        pdf.setLineDashPattern([2, 2], 0);
+        pdf.line(riquadroL, 0, riquadroL, 297);
+        pdf.line(0, riquadroA, 210, riquadroA);
+        pdf.setLineDashPattern([], 0);
+        pdf.setDrawColor(0);
+    });
 
     return pdf;
 }

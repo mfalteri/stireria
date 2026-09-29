@@ -1046,72 +1046,96 @@ button,input,select{font:inherit;color:inherit;}
 .doc-giorno h3{font-size:15px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;}
 .doc-giorno h3 span{font-family:var(--mono);font-weight:500;font-size:12px;color:#555;}
 
-/* Etichetta dell'ordine: disegnata a 100 × 62 mm, solo nero (4 copie per foglio A4) */
-/* Foglio A4 con 4 etichette: 4 strisce uguali, etichetta ingrandita di 1.1 e centrata */
+/*
+Etichette: una per ogni tipo di capo, 97 × 138 mm, in riquadri A4 (2 × 2 da 105 × 148,5 mm).
+Stessa grandezza con 1 o 4 etichette; oltre 4 si passa a un nuovo foglio.
+*/
 .foglio.foglio-etichette{
-    width:210mm;
-    height:296mm;
+    width:auto;
     max-width:none;
     padding:0;
+    background:none;
+    box-shadow:none;
     display:grid;
-    grid-template-rows:repeat(4, 1fr);
+    gap:24px;
+    justify-content:center;
+}
+.pagina-etichette{
+    width:210mm;
+    height:296mm;
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    grid-template-rows:repeat(2, 1fr);
+    background:#fff;
+    box-shadow:0 20px 50px -20px rgba(0,0,0,.5);
     overflow:hidden;
 }
-.striscia{
-    display:grid;
-    place-items:center;
-    border-bottom:.3mm dashed #aaa;
-}
-.striscia:last-child{border-bottom:0;}
-.etichetta-scala{width:110mm;height:68.2mm;}
-.etichetta-scala .etichetta{transform:scale(1.1);transform-origin:0 0;}
-.etichetta{
+.riquadro{display:grid;place-items:center;}
+.riquadro:nth-child(odd){border-right:.3mm dashed #aaa;}
+.riquadro:nth-child(-n+2){border-bottom:.3mm dashed #aaa;}
+.et{
     box-sizing:border-box;
-    width:100mm;
-    height:62mm;
-    padding:3.2mm 4mm 4mm;
+    width:97mm;
+    height:138mm;
+    padding:4mm;
     display:grid;
-    grid-template-rows:auto auto 1fr auto;
-    gap:1.4mm;
+    grid-template-rows:14mm 16mm 50mm 10mm 1fr;
+    row-gap:1.4mm;
     color:#000;
     font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
     line-height:1.15;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
 }
-.et-testa{display:flex;align-items:center;gap:2.2mm;padding-bottom:1.4mm;border-bottom:.35mm solid #000;}
-.et-testa img{width:7.8mm;height:auto;}
-.et-ente{display:grid;gap:.4mm;}
-.et-ente strong{font-size:7.5pt;font-weight:700;letter-spacing:.02em;}
-.et-ente span{font-size:6.5pt;}
+.et-testa{display:flex;align-items:center;gap:2.4mm;border-bottom:.4mm solid #000;padding-bottom:1.6mm;}
+.et-testa img{width:9mm;height:auto;}
+.et-ente{display:grid;gap:.5mm;}
+.et-ente strong{font-size:8.5pt;font-weight:700;letter-spacing:.02em;}
+.et-ente span{font-size:7.5pt;}
 .et-numero{margin-left:auto;display:grid;text-align:right;}
-.et-numero span{font-size:5.5pt;letter-spacing:.08em;text-transform:uppercase;}
-.et-numero b{font-family:"Courier New",Courier,monospace;font-size:14pt;font-weight:700;}
-.et-cliente{display:grid;gap:.6mm;min-width:0;}
-.et-cliente strong{font-size:12pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.et-cliente span{font-size:7.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.et-capi{font-size:9pt;font-weight:700;overflow:hidden;}
-.et-ritiro{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:2mm;
-    padding:1.8mm 3mm 2mm;
-    border:.45mm solid #000;
-    border-radius:1.6mm;
+.et-numero span{font-size:6.5pt;letter-spacing:.08em;text-transform:uppercase;}
+.et-numero b{font-family:"Courier New",Courier,monospace;font-size:17pt;font-weight:700;}
+.et-cliente{display:grid;align-content:center;gap:.8mm;min-width:0;}
+.et-cliente strong{font-size:15pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.et-cliente span{font-size:8pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.et-capo{
+    position:relative;
+    display:grid;
+    align-content:center;
+    gap:1mm;
+    padding:0 4mm;
+    border:.6mm solid #000;
+    border-radius:2mm;
 }
-.et-ritiro-testo{display:grid;gap:.5mm;}
-.et-ritiro-testo span:first-child{font-size:6pt;letter-spacing:.08em;text-transform:uppercase;}
-.et-ritiro-testo strong{font-size:14pt;font-weight:700;}
-.et-ritiro-testo span:last-child{font-size:7.5pt;}
+.et-capo.lavare{background:#000;color:#fff;}
+.et-indice{position:absolute;top:2.5mm;left:4mm;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;}
+.et-quantita{font-size:40pt;font-weight:700;line-height:1;}
+.et-categoria{font-size:18pt;font-weight:700;text-transform:uppercase;line-height:1.1;}
+.et-servizio{font-size:10pt;font-weight:700;letter-spacing:.04em;margin-top:1mm;}
+.et-altri{font-size:8pt;align-self:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.et-ritiro{
+    position:relative;
+    display:grid;
+    align-content:center;
+    gap:1mm;
+    padding:0 4mm;
+    border:.5mm solid #000;
+    border-radius:2mm;
+}
+.et-ritiro span:first-child{font-size:7pt;letter-spacing:.08em;text-transform:uppercase;}
+.et-ritiro strong{font-size:17pt;font-weight:700;}
+.et-ritiro small{font-size:9pt;}
 .et-pagato{
-    padding:2.4mm 2.6mm;
+    position:absolute;
+    right:4mm;
+    bottom:4mm;
+    padding:2mm 3mm;
     border-radius:1.2mm;
     background:#000;
     color:#fff;
     font-size:11pt;
     font-weight:700;
     letter-spacing:.02em;
-    -webkit-print-color-adjust:exact;
-    print-color-adjust:exact;
 }
 
 /* Ricevuta: stato del pagamento */
@@ -1171,7 +1195,9 @@ button,input,select{font:inherit;color:inherit;}
     .anteprima-barra{display:none !important;}
     .anteprima-corpo{padding:0;overflow:visible;}
     .foglio{width:auto;padding:0;box-shadow:none;}
-    .foglio.foglio-etichette{width:210mm;height:296mm;margin:0;}
+    .foglio.foglio-etichette{display:block;gap:0;}
+    .pagina-etichette{box-shadow:none;break-after:page;page-break-after:always;}
+    .pagina-etichette:last-child{break-after:auto;page-break-after:auto;}
 }
 </style>
 <!-- Formato di pagina per la stampa: A4 con margini, o A4 senza margini per le etichette (impostato dall'app) -->
