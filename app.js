@@ -307,7 +307,38 @@ function programmaLavoro(){
             i++;
         }
     }
+    /*
+    I capi "solo lavare" non passano dalla stiratura (tempo 0), ma vanno lavati:
+    compaiono nel primo giorno lavorativo dopo la consegna, in testa alla lista.
+    Se quel giorno l'ordine è già in stiratura, restano nella sua riga (con "SL").
+    */
+    const separati = new Set();
+    for(const o of ordini){
+        if(!CAPI.some(c => soloLavare(o, c))) continue;
+        const iso = dataISO(aggiungiLavorativi(daISO(o.data),1));
+        const lavori = programma[iso] || (programma[iso] = []);
+        if(!lavori.some(l => l.ordine === o)){
+            lavori.unshift({ ordine:o, minuti:0, inizia:true, finisce:true, soloLavaggio:true });
+            separati.add(o.id);
+        }
+    }
+    /* Negli altri giorni quegli ordini mostrano solo i capi da stirare (i "solo lavare" sono già elencati). */
+    Object.values(programma).flat()
+        .filter(l => !l.soloLavaggio && separati.has(l.ordine.id))
+        .forEach(l => l.senzaSoloLavare = true);
+
     return programma;
+}
+
+/*
+Quantità di un capo in una riga del piano: nelle righe "solo lavaggio" solo i capi
+da lavare; nelle righe di stiratura di quegli ordini, solo i capi da stirare.
+*/
+function quantitaInPiano(l, c){
+    const solo = soloLavare(l.ordine, c);
+    if(l.soloLavaggio) return solo ? l.ordine[c.k] : 0;
+    if(l.senzaSoloLavare && solo) return 0;
+    return l.ordine[c.k];
 }
 
 /* ---------- Accesso (Supabase Auth) ---------- */
@@ -1568,6 +1599,7 @@ function righeCapi(lavori){
     return lavori.map((l,i) => {
         const o = l.ordine;
         const nota = [
+            l.soloLavaggio ? "solo lavaggio, da non stirare" : "",
             !l.inizia ? "continua dal giorno prima" : "",
             !l.finisce ? "prosegue il giorno dopo" : "",
             "ritiro " + dataBreve(daISO(o.ritiro))
@@ -1577,7 +1609,10 @@ function righeCapi(lavori){
                 <td><span class="spunta"></span></td>
                 <td class="n">${i+1}</td>
                 <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><b>#${numeroOrdine(o.id)}</b></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
-                ${CAPI.map(c => `<td class="n">${o[c.k] ? o[c.k] + (soloLavare(o, c) ? " SL" : daLavare(o, c) ? " L" : "") : "–"}</td>`).join("")}
+                ${CAPI.map(c => {
+                    const q = quantitaInPiano(l, c);
+                    return `<td class="n">${q ? q + (soloLavare(o, c) ? " SL" : daLavare(o, c) ? " L" : "") : "–"}</td>`;
+                }).join("")}
             </tr>`;
     }).join("");
 }
@@ -1585,18 +1620,24 @@ function righeCapi(lavori){
 function apriPianoGiorno(iso){
     const d = daISO(iso);
     const lavori = programmaLavoro()[iso] || [];
-    const totale = CAPI.reduce((t,c) => (t[c.k] = lavori.reduce((s,l) => s + l.ordine[c.k], 0), t), {});
+    const totale = CAPI.reduce((t,c) => (t[c.k] = lavori.reduce((s,l) => s + quantitaInPiano(l, c), 0), t), {});
+    const daStirare = lavori.filter(l => !l.soloLavaggio).length;
+    const soloLavaggio = lavori.length - daStirare;
+    const conteggio = [
+        daStirare || !soloLavaggio ? daStirare + " " + (daStirare === 1 ? "ordine" : "ordini") + " da stirare" : "",
+        soloLavaggio ? soloLavaggio + " " + (soloLavaggio === 1 ? "ordine" : "ordini") + " solo da lavare" : ""
+    ].filter(Boolean).join(" · ");
 
     const html = testaDocumento("Piano di lavoro", dataBreve(d), "Stireria · piano giornaliero") + `
         <h1>${dataLunga(d)}</h1>
-        <p class="sottotitolo">${lavori.length} ${lavori.length === 1 ? "ordine" : "ordini"} da stirare</p>
-        <h2>Ordini da stirare</h2>
+        <p class="sottotitolo">${conteggio}</p>
+        <h2>Ordini da lavorare</h2>
         ${lavori.length ? `
         <table class="doc-tab">
             <thead><tr><th></th><th class="n">#</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}</tr></thead>
             <tbody>${righeCapi(lavori)}</tbody>
             <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
-        </table>` : '<p class="sottotitolo">Nessun ordine da stirare in questo giorno.</p>'}
+        </table>` : '<p class="sottotitolo">Nessun ordine da lavorare in questo giorno.</p>'}
         <p class="doc-nota doc-nota-grande"><b>L</b> = da lavare prima di stirare. <b>SL</b> = solo da lavare, non stirare. Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
@@ -1609,7 +1650,7 @@ function apriPianoSettimana(){
 
     const righe = date.map(iso => {
         const lavori = programma[iso] || [];
-        const somma = k => lavori.reduce((s,l) => s + l.ordine[k], 0);
+        const somma = k => lavori.reduce((s,l) => s + quantitaInPiano(l, CAPI.find(c => c.k === k)), 0);
         const minuti = lavori.reduce((s,l) => s + l.minuti, 0);
         const cap = capacita(iso);
         const riga = { iso, lavori, minuti, cap, ritiri: db.ordini.filter(o => o.ritiro === iso).length };
