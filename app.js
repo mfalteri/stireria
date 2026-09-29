@@ -327,6 +327,10 @@ function programmaLavoro(){
         .filter(l => !l.soloLavaggio && separati.has(l.ordine.id))
         .forEach(l => l.senzaSoloLavare = true);
 
+    /* In ogni giorno: prima gli ordini solo da lavare, poi gli altri; ognuno in ordine crescente di numero. */
+    Object.values(programma).forEach(lavori =>
+        lavori.sort((a,b) => (b.soloLavaggio ? 1 : 0) - (a.soloLavaggio ? 1 : 0) || a.ordine.id - b.ordine.id));
+
     return programma;
 }
 
