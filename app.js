@@ -501,6 +501,7 @@ let ordineRegistrato = null;
 let ritiroScelto = null;
 let etichettaAperta = false;
 let etichettaStampata = false;   /* risposta "Sì" a "Hai stampato l'etichetta?" */
+let ricevutaStampata = false;    /* risposta "Sì" a "Hai stampato la ricevuta?" */
 let flussoStampa = null;         /* dopo la conferma: "etichetta" → "ricevuta" → null */
 let ricevutaAperta = false;
 
@@ -647,10 +648,10 @@ function aggiornaTicket(){
             <div class="taglio"></div>
             <div class="ticket-corpo passi">
                 <button class="btn" type="button" id="stampaEtichetta">
-                    <span class="n">1</span>Stampa etichetta${etichettaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
+                    <span class="n">1</span>Stampa etichetta${etichettaStampata ? '<span class="fatto-segno">Stampata ✓</span>' : etichettaAperta ? '<span class="fatto-segno">Aperta</span>' : ""}
                 </button>
                 <button class="btn" type="button" id="stampaRicevuta">
-                    <span class="n">2</span>Stampa ricevuta${ricevutaAperta ? '<span class="fatto-segno">Aperta ✓</span>' : ""}
+                    <span class="n">2</span>Stampa ricevuta${ricevutaStampata ? '<span class="fatto-segno">Stampata ✓</span>' : ricevutaAperta ? '<span class="fatto-segno">Aperta</span>' : ""}
                 </button>
                 <button class="btn btn-primario" type="button" id="confermaChiudi">
                     <span class="n">3</span>Conferma e chiudi
@@ -785,6 +786,7 @@ $("#formOrdine").addEventListener("submit", async e => {
     ordineRegistrato = ordine;
     etichettaAperta = false;
     etichettaStampata = false;
+    ricevutaStampata = false;
     ricevutaAperta = false;
     bloccaModulo(true);
     aggiornaTicket();
@@ -1569,10 +1571,10 @@ function apriPianoSettimana(){
     mostraDocumento("Piano di lavoro · settimana " + numero, html, "Piano-lavoro_settimana-" + numero + ".pdf");
 }
 
-/* Chiudere l'anteprima della conferma riporta al punto in cui si era. */
 /*
 Dopo la conferma di un ordine: chiudendo le etichette si chiede se sono state
 stampate; con "Sì" si apre la ricevuta, con "No" si resta sulle etichette.
+Chiudendo la ricevuta dell'ordine appena registrato si chiede se è stata stampata.
 */
 async function chiudiAnteprima(){
     if(!$("#dialogo").hidden) return;
@@ -1589,6 +1591,20 @@ async function chiudiAnteprima(){
         $("#anteprima").hidden = true;
         aggiornaTicket();
         return apriRicevuta(documentoCorrente.ordine);
+    }
+
+    /* Ricevuta (documento A4 legato a un ordine) dell'ordine appena registrato */
+    const ricevutaNuovoOrdine = documentoCorrente.tipo === "a4" && documentoCorrente.ordine &&
+        ordineRegistrato && documentoCorrente.ordine.id === ordineRegistrato.id;
+    if(ricevutaNuovoOrdine){
+        const risposta = await chiedi(
+            "Hai stampato la ricevuta?",
+            "",
+            [{ valore:"no", testo:"No, torna alla stampa" }, { valore:"si", testo:"Sì", primario:true }]
+        );
+        if(risposta !== "si") return;
+        ricevutaStampata = true;
+        aggiornaTicket();
     }
 
     if(documentoCorrente.tipo === "a4") flussoStampa = null;
