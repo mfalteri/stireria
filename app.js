@@ -1256,12 +1256,8 @@ const capiEtichette = o => CAPI.filter(c => o[c.k] > 0);
 const nomeCapo = (c, n) => n === 1 ? c.uno : c.nome.toLowerCase();
 const servizioCapo = (o, c) => daLavare(o, c) ? "DA LAVARE E STIRARE" : "SOLO DA STIRARE";
 
-function altriCapi(o, c){
-    const altri = capiEtichette(o).filter(x => x !== c);
-    return altri.length
-        ? "Nello stesso ordine: " + altri.map(x => o[x.k] + " " + nomeCapo(x, o[x.k])).join(" · ")
-        : "Unico tipo di capo dell'ordine";
-}
+/* Comanda completa: tutti i capi dell'ordine, con il servizio di ciascuno. */
+const servizioBreve = (o, c) => daLavare(o, c) ? "lavare e stirare" : "stirare";
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
 
@@ -1292,7 +1288,13 @@ function htmlEtichetta(o, c, indice, totale){
                 <strong class="et-categoria">${nomeCapo(c, o[c.k])}</strong>
                 <span class="et-servizio">${servizioCapo(o, c)}</span>
             </div>
-            <div class="et-altri">${esc(altriCapi(o, c))}</div>
+            <div class="et-comanda">
+                <span class="et-comanda-titolo">Comanda completa</span>
+                ${capiEtichette(o).map(x => `
+                    <div class="et-comanda-riga${x === c ? " corrente" : ""}">
+                        <span>${o[x.k]}</span><span>${nomeCapo(x, o[x.k])}</span><span>${servizioBreve(o, x)}</span>
+                    </div>`).join("")}
+            </div>
             <div class="et-ritiro">
                 <span>Ritiro</span>
                 <strong>${dataPunti(daISO(o.ritiro))}</strong>
@@ -1407,50 +1409,55 @@ function disegnaEtichetta(pdf, o, c, indice, totale, x0, y0){
     pdf.text(taglia(telefonoLeggibile(o.telefono) + " · registrato il " +
         pad(creato.getDate()) + "." + pad(creato.getMonth()+1) + ". alle " + o.creato.slice(11), larghezza), X(sx), Y(30.8));
 
-    /* Tipo di capo: riquadro nero se da lavare, bianco se solo da stirare */
-    pdf.setLineWidth(0.6);
-    pdf.setFillColor(0);
-    pdf.roundedRect(X(sx), Y(35), larghezza, 50, 2, 2, lavare ? "FD" : "S");
-    pdf.setTextColor(lavare ? 255 : 0);
+    /* Tipo di capo di questa etichetta. Niente fondi neri (toner):
+       se da lavare, bordo spesso e "DA LAVARE E STIRARE". */
+    pdf.setLineWidth(lavare ? 1.4 : 0.6);
+    pdf.roundedRect(X(sx), Y(35), larghezza, 38, 2, 2, "S");
     pdf.setFont("helvetica","normal");
     pdf.setFontSize(7);
-    pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(40.5), { charSpace:0.3 });
+    pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(40.3), { charSpace:0.3 });
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(40);
-    pdf.text(String(o[c.k]), X(sx + 4), Y(59));
-    pdf.setFontSize(18);
-    pdf.text(taglia(nomeCapo(c, o[c.k]).toUpperCase(), larghezza - 8), X(sx + 4), Y(69.5));
+    pdf.setFontSize(34);
+    pdf.text(String(o[c.k]), X(sx + 4), Y(56));
+    pdf.setFontSize(16);
+    pdf.text(taglia(nomeCapo(c, o[c.k]).toUpperCase(), larghezza - 8), X(sx + 4), Y(64.3));
     pdf.setFontSize(10);
-    pdf.text(servizioCapo(o, c), X(sx + 4), Y(78.5), { charSpace:0.2 });
-    pdf.setTextColor(0);
+    pdf.text(servizioCapo(o, c), X(sx + 4), Y(70.2), { charSpace:0.2 });
 
-    /* Altri capi dello stesso ordine */
+    /* Comanda completa: tutti i capi dell'ordine, quello di questa etichetta in grassetto */
     pdf.setFont("helvetica","normal");
+    pdf.setFontSize(6.5);
+    pdf.text("COMANDA COMPLETA", X(sx), Y(78.8), { charSpace:0.3 });
     pdf.setFontSize(8);
-    pdf.text(taglia(altriCapi(o, c), larghezza), X(sx), Y(92.5));
+    capiEtichette(o).forEach((x, i) => {
+        const y = Y(82.6 + i * 3.5);
+        pdf.setFont("helvetica", x === c ? "bold" : "normal");
+        pdf.text(String(o[x.k]), X(sx + 8), y, { align:"right" });
+        pdf.text(nomeCapo(x, o[x.k]), X(sx + 9.5), y);
+        pdf.text(servizioBreve(o, x), X(dx), y, { align:"right" });
+    });
 
     /* Ritiro */
     pdf.setLineWidth(0.5);
-    pdf.roundedRect(X(sx), Y(98.5), larghezza, 35.5, 2, 2, "S");
+    pdf.roundedRect(X(sx), Y(100.5), larghezza, 33.5, 2, 2, "S");
+    pdf.setFont("helvetica","normal");
     pdf.setFontSize(7);
-    pdf.text("RITIRO", X(sx + 4), Y(105), { charSpace:0.3 });
+    pdf.text("RITIRO", X(sx + 4), Y(106.5), { charSpace:0.3 });
     pdf.setFont("helvetica","bold");
     pdf.setFontSize(17);
-    pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 4), Y(113.5));
+    pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 4), Y(114.5));
     pdf.setFont("helvetica","normal");
     pdf.setFontSize(9);
-    pdf.text(ORA_RITIRO, X(sx + 4), Y(120.5));
-    pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.5));
+    pdf.text(ORA_RITIRO, X(sx + 4), Y(120.8));
+    pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.6));
 
-    /* Solo se il cliente ha già pagato: riquadro nero "PAGATO" */
+    /* Solo se il cliente ha già pagato: "PAGATO" in un riquadro (solo contorno) */
     if(o.pagato){
-        pdf.setFillColor(0);
-        pdf.roundedRect(X(dx - 30), Y(119), 26, 11, 1.2, 1.2, "F");
-        pdf.setTextColor(255);
+        pdf.setLineWidth(0.6);
+        pdf.roundedRect(X(dx - 30), Y(120), 26, 10, 1.2, 1.2, "S");
         pdf.setFont("helvetica","bold");
         pdf.setFontSize(11);
-        pdf.text("PAGATO", X(dx - 17), Y(126.4), { align:"center" });
-        pdf.setTextColor(0);
+        pdf.text("PAGATO", X(dx - 17), Y(126.9), { align:"center" });
     }
 }
 

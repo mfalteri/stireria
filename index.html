@@ -1079,7 +1079,7 @@ Stessa grandezza con 1 o 4 etichette; oltre 4 si passa a un nuovo foglio.
     height:138mm;
     padding:4mm;
     display:grid;
-    grid-template-rows:14mm 16mm 50mm 10mm 1fr;
+    grid-template-rows:14mm 16mm 38mm 23mm 1fr;
     row-gap:1.4mm;
     color:#000;
     font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
@@ -1107,12 +1107,18 @@ Stessa grandezza con 1 o 4 etichette; oltre 4 si passa a un nuovo foglio.
     border:.6mm solid #000;
     border-radius:2mm;
 }
-.et-capo.lavare{background:#000;color:#fff;}
+/* Da lavare: bordo più spesso (niente fondi neri, per risparmiare toner) */
+.et-capo.lavare{border-width:1.4mm;}
 .et-indice{position:absolute;top:2.5mm;left:4mm;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;}
-.et-quantita{font-size:40pt;font-weight:700;line-height:1;}
-.et-categoria{font-size:18pt;font-weight:700;text-transform:uppercase;line-height:1.1;}
-.et-servizio{font-size:10pt;font-weight:700;letter-spacing:.04em;margin-top:1mm;}
-.et-altri{font-size:8pt;align-self:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.et-quantita{font-size:34pt;font-weight:700;line-height:1;margin-top:3mm;}
+.et-categoria{font-size:16pt;font-weight:700;text-transform:uppercase;line-height:1.1;}
+.et-servizio{font-size:10pt;font-weight:700;letter-spacing:.04em;}
+/* Comanda completa: tutti i capi dell'ordine, quello dell'etichetta in grassetto */
+.et-comanda{display:grid;align-content:start;gap:.4mm;font-size:8pt;}
+.et-comanda-titolo{font-size:6.5pt;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.6mm;}
+.et-comanda-riga{display:grid;grid-template-columns:8mm 1fr auto;gap:1.5mm;}
+.et-comanda-riga span:first-child{text-align:right;}
+.et-comanda-riga.corrente{font-weight:700;}
 .et-ritiro{
     position:relative;
     display:grid;
@@ -1129,13 +1135,12 @@ Stessa grandezza con 1 o 4 etichette; oltre 4 si passa a un nuovo foglio.
     position:absolute;
     right:4mm;
     bottom:4mm;
-    padding:2mm 3mm;
+    padding:1.6mm 2.6mm;
+    border:.6mm solid #000;
     border-radius:1.2mm;
-    background:#000;
-    color:#fff;
     font-size:11pt;
     font-weight:700;
-    letter-spacing:.02em;
+    letter-spacing:.04em;
 }
 
 /* Ricevuta: stato del pagamento */
