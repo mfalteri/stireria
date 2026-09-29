@@ -1263,15 +1263,34 @@ const servizioBreve = (o, c) => daLavare(o, c) ? "lavare e stirare" : "stirare";
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
 
+/*
+Etichette da stampare: una per tipo di capo, tranne ceste e mezze ceste
+che ne hanno una per pezzo (3 ceste → 3 etichette, "cesta 2 di 3").
+*/
+const UNA_ETICHETTA_PER_PEZZO = ["ceste", "mezze_ceste"];
+
+function vociEtichette(o){
+    return capiEtichette(o).flatMap(c => UNA_ETICHETTA_PER_PEZZO.includes(c.k)
+        ? Array.from({ length:o[c.k] }, (_, i) => ({ c, pezzo:i + 1, di:o[c.k] }))
+        : [{ c }]);
+}
+
+/* Numero grande e nome del capo al centro dell'etichetta */
+const quantitaVoce = (o, v) => v.pezzo ? 1 : o[v.c.k];
+const categoriaVoce = (o, v) => v.pezzo
+    ? v.c.uno + (v.di > 1 ? " " + v.pezzo + " di " + v.di : "")
+    : nomeCapo(v.c, o[v.c.k]);
+
 /* Divide le etichette in fogli da 4. */
 function fogliEtichette(o){
-    const capi = capiEtichette(o);
+    const voci = vociEtichette(o);
     const fogli = [];
-    for(let i = 0; i < capi.length; i += ETICHETTA.perFoglio) fogli.push(capi.slice(i, i + ETICHETTA.perFoglio));
+    for(let i = 0; i < voci.length; i += ETICHETTA.perFoglio) fogli.push(voci.slice(i, i + ETICHETTA.perFoglio));
     return fogli;
 }
 
-function htmlEtichetta(o, c, indice, totale){
+function htmlEtichetta(o, voce, indice, totale){
+    const c = voce.c;
     const creato = daISO(o.creato.slice(0,10));
     return `
         <div class="et">
@@ -1286,8 +1305,8 @@ function htmlEtichetta(o, c, indice, totale){
             </div>
             <div class="et-capo${daLavare(o, c) ? " lavare" : ""}">
                 <span class="et-indice">Etichetta ${indice} di ${totale}</span>
-                <b class="et-quantita">${o[c.k]}</b>
-                <strong class="et-categoria">${nomeCapo(c, o[c.k])}</strong>
+                <b class="et-quantita">${quantitaVoce(o, voce)}</b>
+                <strong class="et-categoria">${categoriaVoce(o, voce)}</strong>
                 <span class="et-servizio">${servizioCapo(o, c)}</span>
             </div>
             <div class="et-comanda">
@@ -1307,10 +1326,10 @@ function htmlEtichetta(o, c, indice, totale){
         </div>`;
 }
 
-/* Etichette dell'ordine: una per tipo di capo, 4 riquadri per foglio A4. */
+/* Etichette dell'ordine: una per tipo di capo (una per pezzo per ceste e mezze ceste), 4 riquadri per foglio A4. */
 function apriConferma(o){
     const creato = o.creato.slice(0,10);
-    const totale = capiEtichette(o).length;
+    const totale = vociEtichette(o).length;
     let indice = 0;
 
     const html = fogliEtichette(o).map(foglio => `
@@ -1374,7 +1393,8 @@ function apriRicevuta(o){
 Disegna nel PDF l'etichetta di un tipo di capo (97 × 138 mm) con l'angolo
 in alto a sinistra in (x0, y0). Testo vettoriale, solo nero.
 */
-function disegnaEtichetta(pdf, o, c, indice, totale, x0, y0){
+function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0){
+    const c = voce.c;
     const X = x => x0 + x, Y = y => y0 + y;
     const W = ETICHETTA.larghezza, sx = 4, dx = W - 4, larghezza = dx - sx;
     const creato = daISO(o.creato.slice(0,10));
@@ -1420,9 +1440,9 @@ function disegnaEtichetta(pdf, o, c, indice, totale, x0, y0){
     pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(40.3), { charSpace:0.3 });
     pdf.setFont("helvetica","bold");
     pdf.setFontSize(34);
-    pdf.text(String(o[c.k]), X(sx + 4), Y(56));
+    pdf.text(String(quantitaVoce(o, voce)), X(sx + 4), Y(56));
     pdf.setFontSize(16);
-    pdf.text(taglia(nomeCapo(c, o[c.k]).toUpperCase(), larghezza - 8), X(sx + 4), Y(64.3));
+    pdf.text(taglia(categoriaVoce(o, voce).toUpperCase(), larghezza - 8), X(sx + 4), Y(64.3));
     pdf.setFontSize(10);
     pdf.text(servizioCapo(o, c), X(sx + 4), Y(70.2), { charSpace:0.2 });
 
@@ -1468,15 +1488,15 @@ function pdfEtichetta(o){
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit:"mm", format:"a4" });
     const { larghezza, altezza, riquadroL, riquadroA } = ETICHETTA;
-    const totale = capiEtichette(o).length;
+    const totale = vociEtichette(o).length;
     let indice = 0;
 
     fogliEtichette(o).forEach((foglio, f) => {
         if(f > 0) pdf.addPage();
 
-        foglio.forEach((c, i) => {
+        foglio.forEach((voce, i) => {
             const colonna = i % 2, riga = Math.floor(i / 2);
-            disegnaEtichetta(pdf, o, c, ++indice, totale,
+            disegnaEtichetta(pdf, o, voce, ++indice, totale,
                 colonna * riquadroL + (riquadroL - larghezza) / 2,
                 riga * riquadroA + (riquadroA - altezza) / 2);
         });
@@ -1506,7 +1526,7 @@ function righeCapi(lavori){
             <tr>
                 <td><span class="spunta"></span></td>
                 <td class="n">${i+1}</td>
-                <td><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span class="piccolo">#${numeroOrdine(o.id)} · ${SEDI[o.sede]} · ${nota}</span></td>
+                <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><b>#${numeroOrdine(o.id)}</b></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
                 ${CAPI.map(c => `<td class="n">${o[c.k] ? o[c.k] + (daLavare(o, c) ? " L" : "") : "–"}</td>`).join("")}
             </tr>`;
     }).join("");
@@ -1527,7 +1547,7 @@ function apriPianoGiorno(iso){
             <tbody>${righeCapi(lavori)}</tbody>
             <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da stirare in questo giorno.</p>'}
-        <p class="doc-nota"><b>L</b> = da lavare prima di stirare. Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
+        <p class="doc-nota doc-nota-grande"><b>L</b> = da lavare prima di stirare. Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
 }
