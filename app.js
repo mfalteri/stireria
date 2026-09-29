@@ -1611,7 +1611,8 @@ function righeCapi(lavori){
                 <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><b>#${numeroOrdine(o.id)}</b></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
                 ${CAPI.map(c => {
                     const q = quantitaInPiano(l, c);
-                    return `<td class="n">${q ? q + (soloLavare(o, c) ? " SL" : daLavare(o, c) ? " L" : "") : "–"}</td>`;
+                    /* S = stirare, SL = stirare e lavare, L = solo lavare */
+                    return `<td class="n">${q ? q + (soloLavare(o, c) ? " L" : daLavare(o, c) ? " SL" : " S") : "–"}</td>`;
                 }).join("")}
             </tr>`;
     }).join("");
@@ -1638,7 +1639,7 @@ function apriPianoGiorno(iso){
             <tbody>${righeCapi(lavori)}</tbody>
             <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da lavorare in questo giorno.</p>'}
-        <p class="doc-nota doc-nota-grande"><b>L</b> = da lavare prima di stirare. <b>SL</b> = solo da lavare, non stirare. Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
+        <p class="doc-nota doc-nota-grande"><b>S</b> = stirare · <b>SL</b> = stirare e lavare · <b>L</b> = lavare (senza stirare). Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
 }
