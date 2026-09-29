@@ -1321,7 +1321,7 @@ function htmlEtichetta(o, voce, indice, totale){
                 <strong>${dataPunti(daISO(o.ritiro))}</strong>
                 <small>${ORA_RITIRO}</small>
                 <small>presso ${SEDI[o.sede]}</small>
-                ${o.pagato ? '<b class="et-pagato">PAGATO</b>' : ""}
+                <b class="et-pagato">${o.pagato ? "PAGATO" : "DA PAGARE"}</b>
             </div>
         </div>`;
 }
@@ -1473,14 +1473,12 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0){
     pdf.text(ORA_RITIRO, X(sx + 4), Y(120.8));
     pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.6));
 
-    /* Solo se il cliente ha già pagato: "PAGATO" in un riquadro (solo contorno) */
-    if(o.pagato){
-        pdf.setLineWidth(0.6);
-        pdf.roundedRect(X(dx - 30), Y(120), 26, 10, 1.2, 1.2, "S");
-        pdf.setFont("helvetica","bold");
-        pdf.setFontSize(11);
-        pdf.text("PAGATO", X(dx - 17), Y(126.9), { align:"center" });
-    }
+    /* Pagamento in un riquadro (solo contorno): "PAGATO" oppure "DA PAGARE" */
+    pdf.setLineWidth(0.6);
+    pdf.roundedRect(X(dx - 34), Y(120), 30, 10, 1.2, 1.2, "S");
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(11);
+    pdf.text(o.pagato ? "PAGATO" : "DA PAGARE", X(dx - 19), Y(126.9), { align:"center" });
 }
 
 /* PDF: fogli A4 con 4 riquadri; un'etichetta per tipo di capo, sempre della stessa grandezza. */
