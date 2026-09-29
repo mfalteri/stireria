@@ -1607,8 +1607,8 @@ function righeCapi(lavori){
         return `
             <tr>
                 <td><span class="spunta"></span></td>
-                <td class="n">${i+1}</td>
-                <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><b>#${numeroOrdine(o.id)}</b></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
+                <td class="doc-numero">#${numeroOrdine(o.id)}</td>
+                <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
                 ${CAPI.map(c => {
                     const q = quantitaInPiano(l, c);
                     /* S = stirare, SL = stirare e lavare, L = solo lavare */
@@ -1635,7 +1635,7 @@ function apriPianoGiorno(iso){
         <h2>Ordini da lavorare</h2>
         ${lavori.length ? `
         <table class="doc-tab">
-            <thead><tr><th></th><th class="n">#</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}</tr></thead>
+            <thead><tr><th></th><th>Ordine</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}</tr></thead>
             <tbody>${righeCapi(lavori)}</tbody>
             <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da lavorare in questo giorno.</p>'}
