@@ -9,15 +9,15 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const MINUTI_TURNO = 225;
 const ORA_RITIRO = "a partire dalle 14.00";
 const GIORNI_SCELTA_RITIRO = 6;       // primo giorno possibile + 5 successivi
-/* Tempi (minuti) e prezzi (CHF: solo stirato / stirato e lavato); i valori veri sono nel database. */
+/* Tempi (minuti) e prezzi (CHF: solo stirato / stirato e lavato / solo lavato); i valori veri sono nel database. */
 const CONFIG_PREDEFINITA = {
     turniDefault:6,
     tempoCamicia:25, tempoLenzuolo:20, tempoCompleto:40, tempoMezzaCesta:180, tempoCesta:360,
     prezzoCamicia:2.5,  prezzoCamiciaLavato:3.5,
     prezzoLenzuolo:5,   prezzoLenzuoloLavato:10,
     prezzoCompleto:10,  prezzoCompletoLavato:10,
-    prezzoMezzaCesta:15, prezzoMezzaCestaLavato:20,
-    prezzoCesta:25,     prezzoCestaLavato:35
+    prezzoMezzaCesta:15, prezzoMezzaCestaLavato:20, prezzoMezzaCestaSoloLavato:7,
+    prezzoCesta:25,     prezzoCestaLavato:35,      prezzoCestaSoloLavato:10
 };
 const AGGIORNAMENTO_MS = 30000;       // ricarica periodica dei dati
 
@@ -27,27 +27,40 @@ const CAPI = [
     { k:"camicie",     nome:"Camicie",          uno:"camicia",          breve:"Camicie",  tempo:"tempoCamicia",    prezzo:"prezzoCamicia" },
     { k:"lenzuola",    nome:"Lenzuola",         uno:"lenzuolo",         breve:"Lenzuola", tempo:"tempoLenzuolo",   prezzo:"prezzoLenzuolo" },
     { k:"completi",    nome:"Completi da uomo", uno:"completo da uomo", breve:"Completi", tempo:"tempoCompleto",   prezzo:"prezzoCompleto" },
-    { k:"mezze_ceste", nome:"Mezze ceste",      uno:"mezza cesta",      breve:"½ ceste",  tempo:"tempoMezzaCesta", prezzo:"prezzoMezzaCesta" },
-    { k:"ceste",       nome:"Ceste",            uno:"cesta",            breve:"Ceste",    tempo:"tempoCesta",      prezzo:"prezzoCesta" }
+    { k:"mezze_ceste", nome:"Mezze ceste",      uno:"mezza cesta",      breve:"½ ceste",  tempo:"tempoMezzaCesta", prezzo:"prezzoMezzaCesta", soloLavare:true },
+    { k:"ceste",       nome:"Ceste",            uno:"cesta",            breve:"Ceste",    tempo:"tempoCesta",      prezzo:"prezzoCesta",      soloLavare:true }
 ];
 
-/* Prezzi: lo stesso calcolo lo fa il database alla registrazione (calcola_importo). */
-const prezzoUnitario = (c, lavare) => Number(db.config[c.prezzo + (lavare ? "Lavato" : "")]) || 0;
-/* lavaggi: { camicie:true, ... } — il lavaggio si sceglie per ogni tipo di capo */
+/*
+Servizio di ogni tipo di capo ("lavaggi"): false = solo stiratura,
+true = lavaggio e stiratura, "solo" = solo lavaggio (ceste e mezze ceste).
+*/
+const prezzoUnitario = (c, servizio) =>
+    Number(db.config[c.prezzo + (servizio === "solo" ? "SoloLavato" : servizio ? "Lavato" : "")]) || 0;
+/* Prezzi: lo stesso calcolo lo fa il database alla registrazione (calcola_importo_ordine). */
 const calcolaImporto = (capi, lavaggi) =>
     Math.round(CAPI.reduce((s,c) => s + (Number(capi[c.k]) || 0) * prezzoUnitario(c, lavaggi[c.k]), 0) * 100) / 100;
 
-/* Nel database: lavare_camicie, lavare_lenzuola, … */
+/* Nel database: lavare_camicie, … e solo_lavare_ceste, solo_lavare_mezze_ceste */
 const campoLavare = c => "lavare_" + c.k;
-const daLavare = (o, c) => !!o[campoLavare(c)] && o[c.k] > 0;
-const lavaggiDi = o => Object.fromEntries(CAPI.map(c => [c.k, daLavare(o, c)]));
+const campoSoloLavare = c => "solo_lavare_" + c.k;
+const soloLavare = (o, c) => !!c.soloLavare && !!o[campoSoloLavare(c)] && o[c.k] > 0;
+const daLavare = (o, c) => !soloLavare(o, c) && !!o[campoLavare(c)] && o[c.k] > 0;
+const servizioDi = (o, c) => soloLavare(o, c) ? "solo" : daLavare(o, c);
+const lavaggiDi = o => Object.fromEntries(CAPI.map(c => [c.k, servizioDi(o, c)]));
 
-/* "solo stiratura", "lavaggio e stiratura" o "in parte da lavare" */
+/* I capi "solo lavare" non si stirano: tempo di stiratura 0. */
+const capiDaStirare = (capi, lavaggi) =>
+    Object.fromEntries(CAPI.map(c => [c.k, lavaggi[c.k] === "solo" ? 0 : (Number(capi[c.k]) || 0)]));
+const minutiStiratura = o => minutiCapi(capiDaStirare(o, lavaggiDi(o)));
+
+/* "solo stiratura", "lavaggio e stiratura", "solo lavaggio" o "in parte da lavare" */
 function descriviServizio(capi, lavaggi){
     const presenti = CAPI.filter(c => capi[c.k] > 0);
     const lavati = presenti.filter(c => lavaggi[c.k]);
     if(!lavati.length) return "solo stiratura";
-    if(lavati.length === presenti.length) return "lavaggio e stiratura";
+    if(presenti.every(c => lavaggi[c.k] === "solo")) return "solo lavaggio";
+    if(presenti.every(c => lavaggi[c.k] === true)) return "lavaggio e stiratura";
     return "in parte da lavare";
 }
 const chf = n => "CHF " + (Number(n) || 0).toFixed(2);
@@ -236,15 +249,20 @@ function giornoFine(inizio, minuti){
     return null;
 }
 
-/* Primo giorno di ritiro possibile per capi consegnati nel giorno "deposito". */
-function primoRitiro(capi, deposito){
+/*
+Primo giorno di ritiro possibile per capi consegnati nel giorno "deposito".
+"capi" sono quelli da stirare. Se non c'è nulla da stirare ma ci sono capi
+"solo lavare" (soloLavaggio), il tempo è 0: il giorno di consegna non conta,
+poi le solite 48 ore (2 giorni lavorativi).
+*/
+function primoRitiro(capi, deposito, soloLavaggio = false){
     const minuti = minutiCapi(capi);
-    if(minuti <= 0) return null;
+    const inizio = aggiungiLavorativi(daISO(deposito),1);
+    if(minuti <= 0) return soloLavaggio ? aggiungiLavorativi(inizio,2) : null;
     const giorni = capiPerGiorno();
     const prima =
         Math.max(0, codaAllInizio(giorni,deposito) - capacita(deposito)) +
         minutiArrivati(giorni,deposito);
-    const inizio = aggiungiLavorativi(daISO(deposito),1);
     const fine = giornoFine(dataISO(inizio), prima + minuti);
     return fine ? aggiungiLavorativi(fine,2) : null;
 }
@@ -284,7 +302,7 @@ function programmaLavoro(){
             if(lavori.length) programma[iso] = lavori;
         }
         while(i < ordini.length && ordini[i].data <= iso){
-            const minuti = minutiCapi(ordini[i]);
+            const minuti = minutiStiratura(ordini[i]);   /* "solo lavare" = 0 */
             if(minuti > 0) coda.push({ ordine:ordini[i], resto:minuti, totale:minuti });
             i++;
         }
@@ -515,10 +533,17 @@ function disegnaCapi(){
         </div>` + CAPI.map(c => `
         <div class="capo" data-capo="${c.k}">
             <strong>${c.nome}</strong>
-            <label class="lava" for="${campoLavare(c)}" title="Lavare anche: ${c.nome.toLowerCase()}">
-                <input id="${campoLavare(c)}" type="checkbox" data-lavare="${c.k}">
-                <span>Lavare</span>
-            </label>
+            <span class="lava-gruppo">
+                <label class="lava" for="${campoLavare(c)}" title="Lavare e stirare: ${c.nome.toLowerCase()}">
+                    <input id="${campoLavare(c)}" type="checkbox" data-lavare="${c.k}">
+                    <span>Lavare</span>
+                </label>
+                ${c.soloLavare ? `
+                <label class="lava lava-solo" for="${campoSoloLavare(c)}" title="Solo lavare, senza stirare: ${c.nome.toLowerCase()}">
+                    <input id="${campoSoloLavare(c)}" type="checkbox" data-solo-lavare="${c.k}">
+                    <span>Solo lavare</span>
+                </label>` : ""}
+            </span>
             <div class="stepper">
                 <button type="button" data-passo="-1" aria-label="Togli ${c.uno}">−</button>
                 <input id="${c.k}" type="number" min="0" step="1" value="0" inputmode="numeric" aria-label="${c.nome}">
@@ -535,15 +560,26 @@ function disegnaCapi(){
         input.addEventListener("input", aggiornaTicket);
     });
 
-    /* Lavaggio di un tipo di capo */
+    /* "Lavare" (lavare e stirare) e "Solo lavare" si escludono a vicenda. */
+    const soloDi = k => $(`[data-solo-lavare="${k}"]`);
+    const lavareDi = k => $(`[data-lavare="${k}"]`);
+
     $$("[data-lavare]").forEach(box => box.addEventListener("change", () => {
+        if(box.checked && soloDi(box.dataset.lavare)) soloDi(box.dataset.lavare).checked = false;
         aggiornaLavareTutto();
         aggiornaTicket();
     }));
 
-    /* "Lavare tutto" accende o spegne il lavaggio di tutti i capi */
+    $$("[data-solo-lavare]").forEach(box => box.addEventListener("change", () => {
+        if(box.checked) lavareDi(box.dataset.soloLavare).checked = false;
+        aggiornaLavareTutto();
+        aggiornaTicket();
+    }));
+
+    /* "Lavare tutto" accende o spegne "lavare e stirare" per tutti i capi */
     $("#lavareTutto").addEventListener("change", () => {
         $$("[data-lavare]").forEach(box => box.checked = $("#lavareTutto").checked);
+        if($("#lavareTutto").checked) $$("[data-solo-lavare]").forEach(box => box.checked = false);
         aggiornaLavareTutto();
         aggiornaTicket();
     });
@@ -563,11 +599,17 @@ function capiInseriti(){
     return capi;
 }
 
+/* false = solo stiratura, true = lavaggio e stiratura, "solo" = solo lavaggio */
 function lavaggiInseriti(){
     const lavaggi = {};
-    CAPI.forEach(c => lavaggi[c.k] = $("#" + campoLavare(c)).checked);
+    CAPI.forEach(c => {
+        const solo = c.soloLavare && $("#" + campoSoloLavare(c)).checked;
+        lavaggi[c.k] = solo ? "solo" : $("#" + campoLavare(c)).checked;
+    });
     return lavaggi;
 }
+
+const testoServizio = s => s === "solo" ? "solo lavaggio" : s ? "lavaggio e stiratura" : "";
 
 /* Totale del modulo: cambia con i capi e con le caselle "Lavare". */
 function aggiornaTotale(){
@@ -575,7 +617,7 @@ function aggiornaTotale(){
     const lavaggi = lavaggiInseriti();
     const totale = calcolaImporto(capi, lavaggi);
     const righe = CAPI.filter(c => capi[c.k] > 0)
-        .map(c => `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${lavaggi[c.k] ? " <em>lavaggio e stiratura</em>" : ""}</span><span>${chf(capi[c.k] * prezzoUnitario(c, lavaggi[c.k]))}</span></li>`)
+        .map(c => `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${lavaggi[c.k] ? " <em>" + testoServizio(lavaggi[c.k]) + "</em>" : ""}</span><span>${chf(capi[c.k] * prezzoUnitario(c, lavaggi[c.k]))}</span></li>`)
         .join("");
 
     $("#totaleOrdine").innerHTML = `
@@ -611,9 +653,12 @@ function controllaTelefono(n){
     }
     return "";
 }
-/* I capi da lavare hanno il chip evidenziato con "+ lavaggio". */
+/* I capi da lavare hanno il chip evidenziato: "+ lavaggio" oppure "solo lavaggio". */
 const chipsCapi = o => CAPI.filter(c => o[c.k] > 0)
-    .map(c => `<span class="chip${daLavare(o, c) ? " chip-lavare" : ""}"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${daLavare(o, c) ? " + lavaggio" : ""}</span>`)
+    .map(c => {
+        const s = servizioDi(o, c);
+        return `<span class="chip${s ? " chip-lavare" : ""}"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${s === "solo" ? " · solo lavaggio" : s ? " + lavaggio" : ""}</span>`;
+    })
     .join("");
 
 const badgePagamento = o => o.pagato
@@ -668,7 +713,8 @@ function aggiornaTicket(){
     const totale = aggiornaTotale();
 
     const deposito = dataISO(giornoDeposito(oggi()));
-    const primo = primoRitiro(capi, deposito);
+    /* I capi "solo lavare" non si stirano: contano solo per le 48 ore dopo la consegna. */
+    const primo = primoRitiro(capiDaStirare(capi, lavaggiInseriti()), deposito, CAPI.some(c => capi[c.k] > 0));
     const testa = testaTicket(db.prossimo, sedeOrdine);
 
     if(!primo){
@@ -742,12 +788,13 @@ $("#formOrdine").addEventListener("submit", async e => {
     const cognome = $("#cognome").value.trim();
     const telefono = normalizzaTelefono($("#telefono").value);
     const capi = capiInseriti();
+    const lavaggi = lavaggiInseriti();
 
     if(!nome) return mostraErroreOrdine("Inserisci il nome del cliente.","nome");
     if(!cognome) return mostraErroreOrdine("Inserisci il cognome del cliente.","cognome");
     const erroreTelefono = controllaTelefono(telefono);
     if(erroreTelefono) return mostraErroreOrdine(erroreTelefono,"telefono");
-    if(minutiCapi(capi) <= 0) return mostraErroreOrdine("Aggiungi almeno un capo da stirare.");
+    if(!CAPI.some(c => capi[c.k] > 0)) return mostraErroreOrdine("Aggiungi almeno un capo.");
     if(!ritiroScelto) return mostraErroreOrdine("Scegli il giorno di ritiro.");
 
     mostraErroreOrdine("");
@@ -755,7 +802,7 @@ $("#formOrdine").addEventListener("submit", async e => {
     /* (a) Il pagamento si chiede alla conferma. */
     const pagamento = await chiedi(
         "Il cliente ha pagato?",
-        nome + " " + cognome + " · totale " + chf(calcolaImporto(capi, lavaggiInseriti())),
+        nome + " " + cognome + " · totale " + chf(calcolaImporto(capi, lavaggi)),
         [{ valore:"no", testo:"No, pagherà al ritiro" }, { valore:"si", testo:"Sì, ha pagato", primario:true }]
     );
     if(!pagamento) return;
@@ -769,7 +816,8 @@ $("#formOrdine").addEventListener("submit", async e => {
         sede: utente.sede || sedeOrdine,
         nome, cognome, telefono, ...capi,
         ritiro: ritiroScelto,
-        ...Object.fromEntries(CAPI.map(c => [campoLavare(c), $("#" + campoLavare(c)).checked && capi[c.k] > 0])),
+        ...Object.fromEntries(CAPI.map(c => [campoLavare(c), lavaggi[c.k] === true && capi[c.k] > 0])),
+        ...Object.fromEntries(CAPI.filter(c => c.soloLavare).map(c => [campoSoloLavare(c), lavaggi[c.k] === "solo" && capi[c.k] > 0])),
         pagato: pagamento === "si"
     }).select().single();
 
@@ -808,7 +856,7 @@ function nuovoOrdine(mettiFuoco = true){
     bloccaModulo(false);
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
     CAPI.forEach(c => $("#" + c.k).value = 0);
-    $$("[data-lavare]").forEach(box => box.checked = false);
+    $$("[data-lavare], [data-solo-lavare]").forEach(box => box.checked = false);
     aggiornaLavareTutto();
     mostraErroreOrdine("");
     aggiornaTicket();
@@ -1137,7 +1185,8 @@ $("#righeGiorni").addEventListener("change", async e => {
 });
 
 /* Impostazioni dei capi (tempo e prezzi), disegnate a partire dall'elenco CAPI. */
-const CHIAVI_IMPOSTAZIONI = ["turniDefault", ...CAPI.flatMap(c => [c.tempo, c.prezzo, c.prezzo + "Lavato"])];
+const CHIAVI_IMPOSTAZIONI = ["turniDefault", ...CAPI.flatMap(c =>
+    [c.tempo, c.prezzo, c.prezzo + "Lavato"].concat(c.soloLavare ? [c.prezzo + "SoloLavato"] : []))];
 
 $("#impostazioniCapi").innerHTML = `
     <div class="imp-riga imp-testa"><span>Capo</span><span>Tempo</span><span>Stirato</span><span>Lavato</span></div>
@@ -1147,6 +1196,9 @@ $("#impostazioniCapi").innerHTML = `
             <label class="suffisso"><input id="${c.tempo}" type="number" min="0" step="1" inputmode="numeric" aria-label="Tempo ${c.uno} (minuti)"><em>min</em></label>
             <label class="suffisso"><input id="${c.prezzo}" type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prezzo ${c.uno} solo stirato (CHF)"><em>CHF</em></label>
             <label class="suffisso"><input id="${c.prezzo}Lavato" type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prezzo ${c.uno} stirato e lavato (CHF)"><em>CHF</em></label>
+            ${c.soloLavare ? `
+            <span class="imp-solo">Solo lavare</span>
+            <label class="suffisso"><input id="${c.prezzo}SoloLavato" type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prezzo ${c.uno} solo lavato (CHF)"><em>CHF</em></label>` : ""}
         </div>`).join("")}`;
 
 /* Tempi, prezzi e turni predefiniti: salvati mezzo secondo dopo l'ultima modifica. */
@@ -1256,10 +1308,10 @@ function telefonoLeggibile(n){
 /* Tipi di capo presenti nell'ordine: una etichetta per ciascuno. */
 const capiEtichette = o => CAPI.filter(c => o[c.k] > 0);
 const nomeCapo = (c, n) => n === 1 ? c.uno : c.nome.toLowerCase();
-const servizioCapo = (o, c) => daLavare(o, c) ? "DA LAVARE E STIRARE" : "SOLO DA STIRARE";
+const servizioCapo = (o, c) => soloLavare(o, c) ? "SOLO DA LAVARE (NON STIRARE)" : daLavare(o, c) ? "DA LAVARE E STIRARE" : "SOLO DA STIRARE";
 
 /* Comanda completa: tutti i capi dell'ordine, con il servizio di ciascuno. */
-const servizioBreve = (o, c) => daLavare(o, c) ? "lavare e stirare" : "stirare";
+const servizioBreve = (o, c) => soloLavare(o, c) ? "solo lavare" : daLavare(o, c) ? "lavare e stirare" : "stirare";
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
 
@@ -1303,7 +1355,7 @@ function htmlEtichetta(o, voce, indice, totale){
                 <strong>${esc(o.nome)} ${esc(o.cognome)}</strong>
                 <span>${esc(telefonoLeggibile(o.telefono))} · registrato il ${pad(creato.getDate())}.${pad(creato.getMonth()+1)}. alle ${o.creato.slice(11)}</span>
             </div>
-            <div class="et-capo${daLavare(o, c) ? " lavare" : ""}">
+            <div class="et-capo${servizioDi(o, c) ? " lavare" : ""}">
                 <span class="et-indice">Etichetta ${indice} di ${totale}</span>
                 <b class="et-quantita">${quantitaVoce(o, voce)}</b>
                 <strong class="et-categoria">${categoriaVoce(o, voce)}</strong>
@@ -1363,10 +1415,10 @@ function apriRicevuta(o){
             <tbody>${CAPI.filter(c => o[c.k] > 0).map(c => `
                 <tr>
                     <td>${c.nome}</td>
-                    <td>${daLavare(o, c) ? "Lavaggio e stiratura" : "Stiratura"}</td>
+                    <td>${soloLavare(o, c) ? "Solo lavaggio" : daLavare(o, c) ? "Lavaggio e stiratura" : "Stiratura"}</td>
                     <td class="n">${o[c.k]}</td>
-                    <td class="n">${chf(prezzoUnitario(c, daLavare(o, c)))}</td>
-                    <td class="n">${chf(o[c.k] * prezzoUnitario(c, daLavare(o, c)))}</td>
+                    <td class="n">${chf(prezzoUnitario(c, servizioDi(o, c)))}</td>
+                    <td class="n">${chf(o[c.k] * prezzoUnitario(c, servizioDi(o, c)))}</td>
                 </tr>`).join("")}</tbody>
             <tfoot><tr><td colspan="4">Totale</td><td class="n">${chf(o.importo)}</td></tr></tfoot>
         </table>
@@ -1399,7 +1451,7 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0){
     const W = ETICHETTA.larghezza, sx = 4, dx = W - 4, larghezza = dx - sx;
     const creato = daISO(o.creato.slice(0,10));
     const taglia = (testo, max) => pdf.splitTextToSize(testo, max)[0];
-    const lavare = daLavare(o, c);
+    const lavare = !!servizioDi(o, c);   /* bordo spesso per "lavare" e "solo lavare" */
 
     pdf.setTextColor(0);
     pdf.setDrawColor(0);
@@ -1525,7 +1577,7 @@ function righeCapi(lavori){
                 <td><span class="spunta"></span></td>
                 <td class="n">${i+1}</td>
                 <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><b>#${numeroOrdine(o.id)}</b></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
-                ${CAPI.map(c => `<td class="n">${o[c.k] ? o[c.k] + (daLavare(o, c) ? " L" : "") : "–"}</td>`).join("")}
+                ${CAPI.map(c => `<td class="n">${o[c.k] ? o[c.k] + (soloLavare(o, c) ? " SL" : daLavare(o, c) ? " L" : "") : "–"}</td>`).join("")}
             </tr>`;
     }).join("");
 }
@@ -1545,7 +1597,7 @@ function apriPianoGiorno(iso){
             <tbody>${righeCapi(lavori)}</tbody>
             <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
         </table>` : '<p class="sottotitolo">Nessun ordine da stirare in questo giorno.</p>'}
-        <p class="doc-nota doc-nota-grande"><b>L</b> = da lavare prima di stirare. Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
+        <p class="doc-nota doc-nota-grande"><b>L</b> = da lavare prima di stirare. <b>SL</b> = solo da lavare, non stirare. Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
 }

@@ -474,7 +474,8 @@ button,input,select{font:inherit;color:inherit;}
 .lava:has(input:checked) input{accent-color:var(--accent-ink);}
 .lava-tutto{min-height:40px;padding:0 16px;}
 .lava-tutto:has(input:indeterminate){border-color:var(--accent);color:var(--accent-text);background:var(--accent-soft);}
-.capo .lava{margin-left:auto;}
+.lava-gruppo{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;}
+.capo .lava-gruppo + .stepper{margin-left:0;}
 .capo:not(.attivo) .lava:not(:has(input:checked)){opacity:.7;}
 .ticket-importo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;}
 .ticket-importo strong{font-size:18px;font-variant-numeric:tabular-nums;}
@@ -870,6 +871,7 @@ button,input,select{font:inherit;color:inherit;}
 .imp-testa span{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);}
 .imp-testa span:first-child{display:none;}
 .imp-nome{grid-column:1 / -1;font-size:13.5px;font-weight:700;}
+.imp-solo{grid-column:1 / 3;justify-self:end;font-size:12px;font-weight:600;color:var(--ink-2);}
 .impostazioni-capi input{
     width:100%;
     min-height:38px;
@@ -1183,7 +1185,7 @@ Stessa grandezza con 1 o 4 etichette; oltre 4 si passa a un nuovo foglio.
     .capo strong{font-size:16px;}
     .capo{flex-wrap:wrap;row-gap:8px;}
     .capo > strong{flex:1 1 100%;}
-    .capo .lava{margin-left:0;}
+    .capo .lava-gruppo{margin-left:0;}
     .stepper input{width:54px;}
     .stepper button{width:40px;height:40px;}
     .kpi-voce strong{font-size:23px;}

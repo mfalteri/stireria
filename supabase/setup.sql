@@ -456,3 +456,84 @@ begin
 end $$;
 
 drop function if exists public.calcola_importo(integer, integer, integer, integer, integer, boolean);
+
+
+-- =====================================================================
+-- "Solo lavare" per ceste e mezze ceste: tempo di stiratura 0,
+-- prezzo dedicato (cesta 10 CHF, mezza cesta 7 CHF)
+-- =====================================================================
+alter table public.ordini
+    add column if not exists solo_lavare_ceste       boolean not null default false,
+    add column if not exists solo_lavare_mezze_ceste boolean not null default false;
+
+insert into public.config (chiave, valore) values
+    ('prezzoCestaSoloLavato', 10),
+    ('prezzoMezzaCestaSoloLavato', 7)
+on conflict (chiave) do nothing;
+
+create or replace function public.calcola_importo_ordine(o public.ordini) returns numeric
+language sql stable set search_path = public
+as $$
+    with p as (select chiave, valore from public.config)
+    select round((
+          o.camicie     * coalesce((select valore from p where chiave = 'prezzoCamicia'    || case when o.lavare_camicie  then 'Lavato' else '' end), 0)
+        + o.lenzuola    * coalesce((select valore from p where chiave = 'prezzoLenzuolo'   || case when o.lavare_lenzuola then 'Lavato' else '' end), 0)
+        + o.completi    * coalesce((select valore from p where chiave = 'prezzoCompleto'   || case when o.lavare_completi then 'Lavato' else '' end), 0)
+        + o.mezze_ceste * coalesce((select valore from p where chiave = 'prezzoMezzaCesta' || case when o.solo_lavare_mezze_ceste then 'SoloLavato'
+                                                                                                   when o.lavare_mezze_ceste      then 'Lavato' else '' end), 0)
+        + o.ceste       * coalesce((select valore from p where chiave = 'prezzoCesta'      || case when o.solo_lavare_ceste then 'SoloLavato'
+                                                                                                   when o.lavare_ceste      then 'Lavato' else '' end), 0)
+    )::numeric, 2)
+$$;
+
+create or replace function public.prepara_ordine() returns trigger
+language plpgsql set search_path = public
+as $$
+begin
+    new.telefono := public.normalizza_telefono(new.telefono);
+    if new.telefono like '410%' then
+        new.telefono := '41' || substr(new.telefono, 4);
+    end if;
+
+    -- "solo lavare" esclude "lavare e stirare"; un capo si lava solo se c'è
+    new.solo_lavare_ceste       := new.solo_lavare_ceste       and new.ceste > 0;
+    new.solo_lavare_mezze_ceste := new.solo_lavare_mezze_ceste and new.mezze_ceste > 0;
+    new.lavare_camicie     := new.lavare_camicie     and new.camicie > 0;
+    new.lavare_lenzuola    := new.lavare_lenzuola    and new.lenzuola > 0;
+    new.lavare_completi    := new.lavare_completi    and new.completi > 0;
+    new.lavare_mezze_ceste := new.lavare_mezze_ceste and new.mezze_ceste > 0 and not new.solo_lavare_mezze_ceste;
+    new.lavare_ceste       := new.lavare_ceste       and new.ceste > 0       and not new.solo_lavare_ceste;
+    new.lavare := new.lavare_camicie or new.lavare_lenzuola or new.lavare_completi
+               or new.lavare_mezze_ceste or new.lavare_ceste
+               or new.solo_lavare_mezze_ceste or new.solo_lavare_ceste;
+
+    new.importo := public.calcola_importo_ordine(new);
+    return new;
+end $$;
+
+-- Carico: i capi "solo lavare" non occupano la stiratura (tempo 0)
+drop function if exists public.carico_giornaliero();
+create function public.carico_giornaliero()
+returns table (
+    data date,
+    camicie bigint, lenzuola bigint, ceste bigint, completi bigint, mezze_ceste bigint,
+    camicie_aperte bigint, lenzuola_aperte bigint, ceste_aperte bigint,
+    completi_aperte bigint, mezze_ceste_aperte bigint
+)
+language sql stable security definer set search_path = public
+as $$
+    select o.data,
+           sum(o.camicie), sum(o.lenzuola), sum(o.ceste), sum(o.completi), sum(o.mezze_ceste),
+           sum(o.camicie)  filter (where o.stato = 'lavorazione'),
+           sum(o.lenzuola) filter (where o.stato = 'lavorazione'),
+           sum(case when o.solo_lavare_ceste then 0 else o.ceste end) filter (where o.stato = 'lavorazione'),
+           sum(o.completi) filter (where o.stato = 'lavorazione'),
+           sum(case when o.solo_lavare_mezze_ceste then 0 else o.mezze_ceste end) filter (where o.stato = 'lavorazione')
+    from public.ordini o
+    where public.mio_ruolo() is not null
+    group by o.data
+    order by o.data
+$$;
+
+revoke all on function public.carico_giornaliero() from public, anon;
+grant execute on function public.carico_giornaliero() to authenticated;
