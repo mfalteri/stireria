@@ -500,6 +500,8 @@ function chiedi(titolo, testo, opzioni){
 let ordineRegistrato = null;
 let ritiroScelto = null;
 let etichettaAperta = false;
+let etichettaStampata = false;   /* risposta "Sì" a "Hai stampato l'etichetta?" */
+let flussoStampa = null;         /* dopo la conferma: "etichetta" → "ricevuta" → null */
 let ricevutaAperta = false;
 
 function disegnaCapi(){
@@ -584,7 +586,6 @@ function aggiornaTotale(){
     return totale;
 }
 
-$("#pagato").addEventListener("change", aggiornaTicket);
 
 /*
 Numero in formato internazionale senza "+".
@@ -715,7 +716,7 @@ function aggiornaTicket(){
         const d = daISO(ritiroScelto);
         $("#riepilogoRitiro").textContent =
             "Ritiro " + GIORNI[d.getDay()].toLowerCase() + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + ", dalle 14.00 · " +
-            chf(totale) + ($("#pagato").checked ? " pagato" : " da pagare al ritiro");
+            chf(totale);
     };
     riepilogo();
     $$('input[name="ritiro"]').forEach(r => r.addEventListener("change", () => { ritiroScelto = r.value; riepilogo(); }));
@@ -750,6 +751,14 @@ $("#formOrdine").addEventListener("submit", async e => {
 
     mostraErroreOrdine("");
 
+    /* (a) Il pagamento si chiede alla conferma. */
+    const pagamento = await chiedi(
+        "Il cliente ha pagato?",
+        nome + " " + cognome + " · totale " + chf(calcolaImporto(capi, lavaggiInseriti())),
+        [{ valore:"no", testo:"No, pagherà al ritiro" }, { valore:"si", testo:"Sì, ha pagato", primario:true }]
+    );
+    if(!pagamento) return;
+
     const pulsante = $("#registra");
     pulsante.disabled = true;
     pulsante.querySelector("strong").textContent = "Registrazione…";
@@ -760,7 +769,7 @@ $("#formOrdine").addEventListener("submit", async e => {
         nome, cognome, telefono, ...capi,
         ritiro: ritiroScelto,
         ...Object.fromEntries(CAPI.map(c => [campoLavare(c), $("#" + campoLavare(c)).checked && capi[c.k] > 0])),
-        pagato: $("#pagato").checked
+        pagato: pagamento === "si"
     }).select().single();
 
     if(error){
@@ -775,11 +784,15 @@ $("#formOrdine").addEventListener("submit", async e => {
 
     ordineRegistrato = ordine;
     etichettaAperta = false;
+    etichettaStampata = false;
     ricevutaAperta = false;
     bloccaModulo(true);
     aggiornaTicket();
     aggiornaBadge();
-    $("#stampaEtichetta").focus();
+
+    /* (b) Subito le etichette; alla chiusura si chiede se sono state stampate, poi (c) la ricevuta. */
+    flussoStampa = "etichetta";
+    apriConferma(ordine);
 });
 
 function bloccaModulo(bloccato){
@@ -788,13 +801,13 @@ function bloccaModulo(bloccato){
 
 function nuovoOrdine(mettiFuoco = true){
     ordineRegistrato = null;
+    flussoStampa = null;
     ritiroScelto = null;
     bloccaModulo(false);
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
     CAPI.forEach(c => $("#" + c.k).value = 0);
     $$("[data-lavare]").forEach(box => box.checked = false);
     aggiornaLavareTutto();
-    $("#pagato").checked = false;
     mostraErroreOrdine("");
     aggiornaTicket();
     if(mettiFuoco) $("#nome").focus();
@@ -802,8 +815,10 @@ function nuovoOrdine(mettiFuoco = true){
 
 $("#svuota").addEventListener("click", () => nuovoOrdine());
 
-/* Prima di chiudere si verifica che l'etichetta sia stata stampata. */
+/* Prima di chiudere si verifica che l'etichetta sia stata stampata (se non lo si è già detto). */
 async function confermaEChiudi(){
+    if(etichettaStampata) return nuovoOrdine();
+
     const stampata = await chiedi(
         "Hai stampato l'etichetta?",
         "",
@@ -814,7 +829,7 @@ async function confermaEChiudi(){
 
     const stampare = await chiedi(
         "Vuoi stamparla?",
-        "Si apre l'etichetta 100 × 62 mm, pronta da stampare.",
+        "Si apre il foglio A4 con 4 etichette, pronto da stampare.",
         [{ valore:"no", testo:"No" }, { valore:"si", testo:"Sì", primario:true }]
     );
     if(stampare === "si") return apriConferma(ordineRegistrato);
@@ -1200,20 +1215,24 @@ function testaDocumento(riferimentoEtichetta, riferimento, sottotitolo){
         </div>`;
 }
 
-/* Documento in anteprima: "a4" (piani di lavoro) o "etichetta" (conferma d'ordine). */
+/* Documento in anteprima: "a4" (ricevuta, piani di lavoro) o "etichette" (4 etichette su un A4). */
 let documentoCorrente = { tipo:"a4", ordine:null };
+
+/* Etichette: il foglio A4 è diviso in 4 strisce uguali (210 × 74,25 mm);
+   in ognuna l'etichetta 100 × 62 mm è ingrandita e centrata. */
+const SCALA_ETICHETTA = 1.1;
 
 function mostraDocumento(titolo, html, nomeFile, tipo = "a4", ordine = null){
     documentoCorrente = { tipo, ordine };
     $("#anteprimaTitolo").textContent = titolo;
-    $("#anteprimaNota").textContent = tipo === "etichetta"
-        ? "Etichetta Brother DK-11202 · 100 × 62 mm · " + nomeFile
+    $("#anteprimaNota").textContent = tipo === "etichette"
+        ? "4 etichette su un foglio A4, da ritagliare lungo le linee · " + nomeFile
         : nomeFile;
     $("#foglio").innerHTML = html;
-    $("#foglio").classList.toggle("foglio-etichetta", tipo === "etichetta");
+    $("#foglio").classList.toggle("foglio-etichette", tipo === "etichette");
     /* Formato della pagina per la stampa dal browser */
-    $("#paginaStampa").textContent = tipo === "etichetta"
-        ? "@page{size:100mm 62mm;margin:0;}"
+    $("#paginaStampa").textContent = tipo === "etichette"
+        ? "@page{size:A4;margin:0;}"
         : "@page{size:A4;margin:14mm;}";
     nomeFilePdf = nomeFile;
     $("#anteprima").hidden = false;
@@ -1245,10 +1264,10 @@ const testoCapiEtichetta = o => righeCapiEtichetta(o).join(" — ");
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
 
-/* Conferma d'ordine su etichetta Brother DK-11202 (100 × 62 mm). */
+/* Etichetta dell'ordine: 4 copie uguali su un foglio A4. */
 function apriConferma(o){
     const creato = o.creato.slice(0,10);
-    const html = `
+    const etichetta = `
         <div class="etichetta">
             <div class="et-testa">
                 <img src="${LOGO}" alt="Frequenze">
@@ -1270,12 +1289,15 @@ function apriConferma(o){
             </div>
         </div>`;
 
-    const nome = creato + "_" + numeroOrdine(o.id) + "_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
+    const html = [1,2,3,4].map(() =>
+        `<div class="striscia"><div class="etichetta-scala">${etichetta}</div></div>`).join("");
+
+    const nome = creato + "_" + numeroOrdine(o.id) + "_etichette_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
     if(ordineRegistrato && o.id === ordineRegistrato.id){
         etichettaAperta = true;
         aggiornaTicket();
     }
-    mostraDocumento("Etichetta ordine N° " + numeroOrdine(o.id), html, nome, "etichetta", o);
+    mostraDocumento("Etichette ordine N° " + numeroOrdine(o.id), html, nome, "etichette", o);
 }
 
 /* Ricevuta dell'ordine su foglio A4. */
@@ -1312,8 +1334,7 @@ function apriRicevuta(o){
             <strong>${dataLunga(daISO(o.ritiro))}</strong>
             <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
         </div>
-        <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>
-        <div class="doc-firma"><div>Firma dell'operatore</div><div>Firma del cliente</div></div>`;
+        <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>`;
 
     const nome = creato + "_" + numeroOrdine(o.id) + "_ricevuta_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
     if(ordineRegistrato && o.id === ordineRegistrato.id){
@@ -1324,12 +1345,11 @@ function apriRicevuta(o){
 }
 
 /*
-PDF vettoriale dell'etichetta: 100 × 62 mm orizzontale, solo nero,
-testo nitido per la stampa termica Brother QL.
+Disegna un'etichetta (progettata a 100 × 62 mm) nel PDF, con l'angolo in
+alto a sinistra in (x0, y0) e ingrandita di "s". Testo vettoriale, solo nero.
 */
-function pdfEtichetta(o){
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit:"mm", format:[62,100], orientation:"landscape" });
+function disegnaEtichetta(pdf, o, x0, y0, s){
+    const X = x => x0 + x * s, Y = y => y0 + y * s, F = pt => pt * s;
     const sx = 4, dx = 96, larghezza = dx - sx;
     const creato = daISO(o.creato.slice(0,10));
     const taglia = (testo, max) => pdf.splitTextToSize(testo, max)[0];
@@ -1338,63 +1358,83 @@ function pdfEtichetta(o){
     pdf.setDrawColor(0);
 
     /* Intestazione */
-    pdf.addImage(LOGO, "PNG", sx, 3.2, 7.8, 9);
+    pdf.addImage(LOGO, "PNG", X(sx), Y(3.2), 7.8 * s, 9 * s);
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(7.5);
-    pdf.text("ASSOCIAZIONE FREQUENZE", sx + 10, 6.8);
+    pdf.setFontSize(F(7.5));
+    pdf.text("ASSOCIAZIONE FREQUENZE", X(sx + 10), Y(6.8));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(6.5);
-    pdf.text("Stireria · " + SEDI[o.sede], sx + 10, 10);
+    pdf.setFontSize(F(6.5));
+    pdf.text("Stireria · " + SEDI[o.sede], X(sx + 10), Y(10));
 
-    pdf.setFontSize(5.5);
-    pdf.text("ORDINE", dx, 5.8, { align:"right", charSpace:0.3 });
+    pdf.setFontSize(F(5.5));
+    pdf.text("ORDINE", X(dx), Y(5.8), { align:"right", charSpace:0.3 * s });
     pdf.setFont("courier","bold");
-    pdf.setFontSize(14);
-    pdf.text("N° " + numeroOrdine(o.id), dx, 11.2, { align:"right" });
+    pdf.setFontSize(F(14));
+    pdf.text("N° " + numeroOrdine(o.id), X(dx), Y(11.2), { align:"right" });
 
-    pdf.setLineWidth(0.35);
-    pdf.line(sx, 13.6, dx, 13.6);
+    pdf.setLineWidth(0.35 * s);
+    pdf.line(X(sx), Y(13.6), X(dx), Y(13.6));
 
     /* Cliente */
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(12);
-    pdf.text(taglia(o.nome + " " + o.cognome, larghezza), sx, 19.6);
+    pdf.setFontSize(F(12));
+    pdf.text(taglia(o.nome + " " + o.cognome, larghezza * s), X(sx), Y(19.6));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(7.5);
+    pdf.setFontSize(F(7.5));
     pdf.text(taglia(telefonoLeggibile(o.telefono) + " · registrato il " +
-        pad(creato.getDate()) + "." + pad(creato.getMonth()+1) + ". alle " + o.creato.slice(11), larghezza), sx, 23.8);
+        pad(creato.getDate()) + "." + pad(creato.getMonth()+1) + ". alle " + o.creato.slice(11), larghezza * s), X(sx), Y(23.8));
 
     /* Capi */
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(9);
+    pdf.setFontSize(F(9));
     righeCapiEtichetta(o)
-        .flatMap(riga => pdf.splitTextToSize(riga, larghezza))
+        .flatMap(riga => pdf.splitTextToSize(riga, larghezza * s))
         .slice(0,2)
-        .forEach((riga, i) => pdf.text(riga, sx, 29.8 + i * 3.8));
+        .forEach((riga, i) => pdf.text(riga, X(sx), Y(29.8 + i * 3.8)));
 
     /* Ritiro */
-    pdf.setLineWidth(0.45);
-    pdf.roundedRect(sx, 38.5, larghezza, 19.5, 1.6, 1.6, "S");
+    pdf.setLineWidth(0.45 * s);
+    pdf.roundedRect(X(sx), Y(38.5), larghezza * s, 19.5 * s, 1.6 * s, 1.6 * s, "S");
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(6);
-    pdf.text("RITIRO", sx + 3, 43, { charSpace:0.3 });
+    pdf.setFontSize(F(6));
+    pdf.text("RITIRO", X(sx + 3), Y(43), { charSpace:0.3 * s });
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(14);
-    pdf.text(dataPunti(daISO(o.ritiro)), sx + 3, 49.6);
+    pdf.setFontSize(F(14));
+    pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 3), Y(49.6));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(7.5);
-    pdf.text(ORA_RITIRO + " · presso " + SEDI[o.sede], sx + 3, 54.4);
+    pdf.setFontSize(F(7.5));
+    pdf.text(ORA_RITIRO + " · presso " + SEDI[o.sede], X(sx + 3), Y(54.4));
 
     /* Solo se il cliente ha già pagato: riquadro nero "PAGATO" a destra. */
     if(o.pagato){
         pdf.setFillColor(0);
-        pdf.roundedRect(dx - 26, 42, 23, 12.5, 1.2, 1.2, "F");
+        pdf.roundedRect(X(dx - 26), Y(42), 23 * s, 12.5 * s, 1.2 * s, 1.2 * s, "F");
         pdf.setTextColor(255);
         pdf.setFont("helvetica","bold");
-        pdf.setFontSize(11);
-        pdf.text("PAGATO", dx - 14.5, 49.8, { align:"center" });
+        pdf.setFontSize(F(11));
+        pdf.text("PAGATO", X(dx - 14.5), Y(49.8), { align:"center" });
         pdf.setTextColor(0);
     }
+}
+
+/* PDF A4 con 4 copie dell'etichetta, una per striscia, e linee di taglio tratteggiate. */
+function pdfEtichetta(o){
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit:"mm", format:"a4" });
+    const s = SCALA_ETICHETTA, altezzaStriscia = 297 / 4;
+    const x0 = (210 - 100 * s) / 2;
+
+    for(let i = 0; i < 4; i++){
+        disegnaEtichetta(pdf, o, x0, i * altezzaStriscia + (altezzaStriscia - 62 * s) / 2, s);
+    }
+
+    /* Linee di taglio */
+    pdf.setDrawColor(170);
+    pdf.setLineWidth(0.2);
+    pdf.setLineDashPattern([2, 2], 0);
+    for(let i = 1; i < 4; i++) pdf.line(0, i * altezzaStriscia, 210, i * altezzaStriscia);
+    pdf.setLineDashPattern([], 0);
+    pdf.setDrawColor(0);
 
     return pdf;
 }
@@ -1477,15 +1517,40 @@ function apriPianoSettimana(){
 }
 
 /* Chiudere l'anteprima della conferma riporta al punto in cui si era. */
-$("#chiudiAnteprima").addEventListener("click", () => $("#anteprima").hidden = true);
-document.addEventListener("keydown", e => { if(e.key === "Escape" && !$("#anteprima").hidden) $("#anteprima").hidden = true; });
+/*
+Dopo la conferma di un ordine: chiudendo le etichette si chiede se sono state
+stampate; con "Sì" si apre la ricevuta, con "No" si resta sulle etichette.
+*/
+async function chiudiAnteprima(){
+    if(!$("#dialogo").hidden) return;
+
+    if(flussoStampa === "etichetta" && documentoCorrente.tipo === "etichette"){
+        const risposta = await chiedi(
+            "Hai stampato l'etichetta?",
+            "",
+            [{ valore:"no", testo:"No, torna alla stampa" }, { valore:"si", testo:"Sì", primario:true }]
+        );
+        if(risposta !== "si") return;
+        etichettaStampata = true;
+        flussoStampa = "ricevuta";
+        $("#anteprima").hidden = true;
+        aggiornaTicket();
+        return apriRicevuta(documentoCorrente.ordine);
+    }
+
+    if(documentoCorrente.tipo === "a4") flussoStampa = null;
+    $("#anteprima").hidden = true;
+}
+
+$("#chiudiAnteprima").addEventListener("click", chiudiAnteprima);
+document.addEventListener("keydown", e => { if(e.key === "Escape" && !$("#anteprima").hidden) chiudiAnteprima(); });
 $("#stampaDoc").addEventListener("click", () => window.print());
 
 $("#scaricaPdf").addEventListener("click", async () => {
     const b = $("#scaricaPdf");
     if(!window.html2canvas || !window.jspdf) return;
 
-    if(documentoCorrente.tipo === "etichetta"){
+    if(documentoCorrente.tipo === "etichette"){
         pdfEtichetta(documentoCorrente.ordine).save(nomeFilePdf);
         return;
     }
