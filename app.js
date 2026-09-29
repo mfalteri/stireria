@@ -534,15 +534,15 @@ function disegnaCapi(){
         <div class="capo" data-capo="${c.k}">
             <strong>${c.nome}</strong>
             <span class="lava-gruppo">
-                <label class="lava" for="${campoLavare(c)}" title="Lavare e stirare: ${c.nome.toLowerCase()}">
-                    <input id="${campoLavare(c)}" type="checkbox" data-lavare="${c.k}">
-                    <span>Lavare</span>
-                </label>
                 ${c.soloLavare ? `
                 <label class="lava lava-solo" for="${campoSoloLavare(c)}" title="Solo lavare, senza stirare: ${c.nome.toLowerCase()}">
                     <input id="${campoSoloLavare(c)}" type="checkbox" data-solo-lavare="${c.k}">
                     <span>Solo lavare</span>
                 </label>` : ""}
+                <label class="lava" for="${campoLavare(c)}" title="Lavare e stirare: ${c.nome.toLowerCase()}">
+                    <input id="${campoLavare(c)}" type="checkbox" data-lavare="${c.k}">
+                    <span>Lavare</span>
+                </label>
             </span>
             <div class="stepper">
                 <button type="button" data-passo="-1" aria-label="Togli ${c.uno}">−</button>

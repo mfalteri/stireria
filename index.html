@@ -474,7 +474,8 @@ button,input,select{font:inherit;color:inherit;}
 .lava:has(input:checked) input{accent-color:var(--accent-ink);}
 .lava-tutto{min-height:40px;padding:0 16px;}
 .lava-tutto:has(input:indeterminate){border-color:var(--accent);color:var(--accent-text);background:var(--accent-soft);}
-.lava-gruppo{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;}
+/* Allineati a destra: "Lavare" cade nella stessa colonna su tutte le righe, "Solo lavare" alla sua sinistra */
+.lava-gruppo{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto;}
 .capo .lava-gruppo + .stepper{margin-left:0;}
 .capo:not(.attivo) .lava:not(:has(input:checked)){opacity:.7;}
 .ticket-importo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;}
