@@ -552,11 +552,8 @@ function chiedi(titolo, testo, opzioni){
 
 let ordineRegistrato = null;
 let ritiroScelto = null;
-let etichettaAperta = false;
-let etichettaStampata = false;   /* risposta "Sì" a "Hai stampato l'etichetta?" */
-let ricevutaStampata = false;    /* risposta "Sì" a "Hai stampato la ricevuta?" */
-let flussoStampa = null;         /* dopo la conferma: "etichetta" → "ricevuta" → null */
-let ricevutaAperta = false;
+let documentiAperti = false;     /* ricevuta ed etichette aperte almeno una volta */
+let documentiStampati = false;   /* risposta "Sì" a "Hai stampato ricevuta ed etichette?" */
 
 function disegnaCapi(){
     $("#capi").innerHTML = `
@@ -727,18 +724,14 @@ function aggiornaTicket(){
             </div>
             <div class="taglio"></div>
             <div class="ticket-corpo passi">
-                <button class="btn" type="button" id="stampaEtichetta">
-                    <span class="n">1</span>Stampa etichetta${etichettaStampata ? '<span class="fatto-segno">Stampata ✓</span>' : etichettaAperta ? '<span class="fatto-segno">Aperta</span>' : ""}
-                </button>
-                <button class="btn" type="button" id="stampaRicevuta">
-                    <span class="n">2</span>Stampa ricevuta${ricevutaStampata ? '<span class="fatto-segno">Stampata ✓</span>' : ricevutaAperta ? '<span class="fatto-segno">Aperta</span>' : ""}
+                <button class="btn" type="button" id="stampaDocumenti">
+                    <span class="n">1</span>Stampa ricevuta ed etichette${documentiStampati ? '<span class="fatto-segno">Stampate ✓</span>' : documentiAperti ? '<span class="fatto-segno">Aperte</span>' : ""}
                 </button>
                 <button class="btn btn-primario" type="button" id="confermaChiudi">
-                    <span class="n">3</span>Conferma e chiudi
+                    <span class="n">2</span>Conferma e chiudi
                 </button>
             </div>`;
-        $("#stampaEtichetta").addEventListener("click", () => apriConferma(ordineRegistrato));
-        $("#stampaRicevuta").addEventListener("click", () => apriRicevuta(ordineRegistrato));
+        $("#stampaDocumenti").addEventListener("click", () => apriDocumentiOrdine(ordineRegistrato));
         $("#confermaChiudi").addEventListener("click", confermaEChiudi);
         return;
     }
@@ -867,17 +860,14 @@ $("#formOrdine").addEventListener("submit", async e => {
     ricarica();
 
     ordineRegistrato = ordine;
-    etichettaAperta = false;
-    etichettaStampata = false;
-    ricevutaStampata = false;
-    ricevutaAperta = false;
+    documentiAperti = false;
+    documentiStampati = false;
     bloccaModulo(true);
     aggiornaTicket();
     aggiornaBadge();
 
-    /* (b) Subito le etichette; alla chiusura si chiede se sono state stampate, poi (c) la ricevuta. */
-    flussoStampa = "etichetta";
-    apriConferma(ordine);
+    /* Subito ricevuta ed etichette in un'unica stampa; alla chiusura si chiede se sono state stampate. */
+    apriDocumentiOrdine(ordine);
 });
 
 function bloccaModulo(bloccato){
@@ -886,7 +876,6 @@ function bloccaModulo(bloccato){
 
 function nuovoOrdine(mettiFuoco = true){
     ordineRegistrato = null;
-    flussoStampa = null;
     ritiroScelto = null;
     bloccaModulo(false);
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
@@ -900,24 +889,24 @@ function nuovoOrdine(mettiFuoco = true){
 
 $("#svuota").addEventListener("click", () => nuovoOrdine());
 
-/* Prima di chiudere si verifica che l'etichetta sia stata stampata (se non lo si è già detto). */
+/* Prima di chiudere si verifica che ricevuta ed etichette siano state stampate (se non lo si è già detto). */
 async function confermaEChiudi(){
-    if(etichettaStampata) return nuovoOrdine();
+    if(documentiStampati) return nuovoOrdine();
 
-    const stampata = await chiedi(
-        "Hai stampato l'etichetta?",
+    const stampati = await chiedi(
+        "Hai stampato ricevuta ed etichette?",
         "",
         [{ valore:"no", testo:"No" }, { valore:"si", testo:"Sì", primario:true }]
     );
-    if(stampata === "si") return nuovoOrdine();
-    if(stampata !== "no") return;
+    if(stampati === "si") return nuovoOrdine();
+    if(stampati !== "no") return;
 
     const stampare = await chiedi(
-        "Vuoi stamparla?",
-        "Si apre il foglio A4 con 4 etichette, pronto da stampare.",
+        "Vuoi stamparle?",
+        "Si apre il documento con la ricevuta e le etichette, pronto da stampare.",
         [{ valore:"no", testo:"No" }, { valore:"si", testo:"Sì", primario:true }]
     );
-    if(stampare === "si") return apriConferma(ordineRegistrato);
+    if(stampare === "si") return apriDocumentiOrdine(ordineRegistrato);
     if(stampare === "no") return nuovoOrdine();
 }
 
@@ -978,8 +967,7 @@ function disegnaOrdini(){
                     <div class="azioni-riga">
                         ${avanti ? `<button class="btn btn-piccolo" data-avanza="${o.id}" data-stato="${avanti[0]}">${avanti[1]}</button>` : ""}
                         ${o.stato === "ritirato" && !o.pagato ? `<button class="btn btn-piccolo" data-incassa="${o.id}">Segna pagato</button>` : ""}
-                        <button class="btn btn-piccolo" data-conferma="${o.id}">Etichetta</button>
-                        <button class="btn btn-piccolo" data-ricevuta="${o.id}">Ricevuta</button>
+                        <button class="btn btn-piccolo" data-documenti="${o.id}">Ricevuta ed etichette</button>
                         ${isAdmin() ? `<button class="btn btn-piccolo btn-pericolo" data-elimina="${o.id}">Elimina</button>` : ""}
                     </div>
                 </td>
@@ -992,7 +980,7 @@ function disegnaOrdini(){
 
 $("#righeOrdini").addEventListener("click", async e => {
     const avanza = e.target.closest("[data-avanza]");
-    const pdf = e.target.closest("[data-conferma]");
+    const documenti = e.target.closest("[data-documenti]");
     const elimina = e.target.closest("[data-elimina]");
 
     if(avanza){
@@ -1044,12 +1032,8 @@ $("#righeOrdini").addEventListener("click", async e => {
         disegnaOrdini();
         avvisa("Ordine #" + numeroOrdine(id) + ": pagato");
     }
-    if(pdf){
-        apriConferma(db.ordini.find(x => x.id === Number(pdf.dataset.conferma)));
-    }
-    const ricevuta = e.target.closest("[data-ricevuta]");
-    if(ricevuta){
-        apriRicevuta(db.ordini.find(x => x.id === Number(ricevuta.dataset.ricevuta)));
+    if(documenti){
+        apriDocumentiOrdine(db.ordini.find(x => x.id === Number(documenti.dataset.documenti)));
     }
     if(elimina){
         if(!elimina.classList.contains("conferma")){
@@ -1317,13 +1301,13 @@ const ETICHETTA = { larghezza:97, altezza:138, riquadroL:105, riquadroA:148.5, p
 function mostraDocumento(titolo, html, nomeFile, tipo = "a4", ordine = null){
     documentoCorrente = { tipo, ordine };
     $("#anteprimaTitolo").textContent = titolo;
-    $("#anteprimaNota").textContent = tipo === "etichette"
-        ? "Una etichetta per tipo di capo, da ritagliare lungo le linee · " + nomeFile
+    $("#anteprimaNota").textContent = tipo === "ordine"
+        ? "Pagina 1: ricevuta · poi le etichette da ritagliare lungo le linee · " + nomeFile
         : nomeFile;
     $("#foglio").innerHTML = html;
-    $("#foglio").classList.toggle("foglio-etichette", tipo === "etichette");
-    /* Formato della pagina per la stampa dal browser */
-    $("#paginaStampa").textContent = tipo === "etichette"
+    $("#foglio").classList.toggle("foglio-etichette", tipo === "ordine");
+    /* Formato della pagina per la stampa dal browser (la ricevuta ha i margini al suo interno) */
+    $("#paginaStampa").textContent = tipo === "ordine"
         ? "@page{size:A4;margin:0;}"
         : "@page{size:A4;margin:14mm;}";
     nomeFilePdf = nomeFile;
@@ -1413,29 +1397,20 @@ function htmlEtichetta(o, voce, indice, totale){
         </div>`;
 }
 
-/* Etichette dell'ordine: una per tipo di capo (una per pezzo per ceste e mezze ceste), 4 riquadri per foglio A4. */
-function apriConferma(o){
-    const creato = o.creato.slice(0,10);
+/* Fogli A4 con le etichette: una per tipo di capo (una per pezzo per ceste e mezze ceste), 4 riquadri per foglio. */
+function htmlPagineEtichette(o){
     const totale = vociEtichette(o).length;
     let indice = 0;
-
-    const html = fogliEtichette(o).map(foglio => `
+    return fogliEtichette(o).map(foglio => `
         <div class="pagina-etichette">
             ${[0,1,2,3].map(i => `<div class="riquadro">${foglio[i] ? htmlEtichetta(o, foglio[i], ++indice, totale) : ""}</div>`).join("")}
         </div>`).join("");
-
-    const nome = creato + "_" + numeroOrdine(o.id) + "_etichette_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
-    if(ordineRegistrato && o.id === ordineRegistrato.id){
-        etichettaAperta = true;
-        aggiornaTicket();
-    }
-    mostraDocumento("Etichette ordine N° " + numeroOrdine(o.id), html, nome, "etichette", o);
 }
 
-/* Ricevuta dell'ordine su foglio A4. */
-function apriRicevuta(o){
+/* Contenuto della ricevuta A4. */
+function htmlRicevuta(o){
     const creato = o.creato.slice(0,10);
-    const html = testaDocumento("Ordine", "N° " + numeroOrdine(o.id), "Stireria · Sede " + SEDI[o.sede]) + `
+    return testaDocumento("Ordine", "N° " + numeroOrdine(o.id), "Stireria · Sede " + SEDI[o.sede]) + `
         <h1>Ricevuta d'ordine</h1>
         <p class="sottotitolo">Grazie per averci affidato i suoi capi.</p>
         <dl class="doc-kv">
@@ -1467,13 +1442,22 @@ function apriRicevuta(o){
             <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
         </div>
         <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>`;
+}
 
-    const nome = creato + "_" + numeroOrdine(o.id) + "_ricevuta_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
+/*
+Documenti dell'ordine in un'unica stampa:
+pagina 1 la ricevuta, poi i fogli con le etichette.
+*/
+function apriDocumentiOrdine(o){
+    const creato = o.creato.slice(0,10);
+    const html = `<div class="pagina-ricevuta">${htmlRicevuta(o)}</div>` + htmlPagineEtichette(o);
+    const nome = creato + "_" + numeroOrdine(o.id) + "_" + (o.nome + "_" + o.cognome).replace(/\s+/g,"_") + ".pdf";
+
     if(ordineRegistrato && o.id === ordineRegistrato.id){
-        ricevutaAperta = true;
+        documentiAperti = true;
         aggiornaTicket();
     }
-    mostraDocumento("Ricevuta ordine N° " + numeroOrdine(o.id), html, nome, "a4", o);
+    mostraDocumento("Ricevuta ed etichette · ordine N° " + numeroOrdine(o.id), html, nome, "ordine", o);
 }
 
 /*
@@ -1568,16 +1552,14 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0){
     pdf.text(o.pagato ? "PAGATO" : "DA PAGARE", X(dx - 19), Y(126.9), { align:"center" });
 }
 
-/* PDF: fogli A4 con 4 riquadri; un'etichetta per tipo di capo, sempre della stessa grandezza. */
-function pdfEtichetta(o){
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit:"mm", format:"a4" });
+/* Aggiunge al PDF i fogli A4 con le etichette (4 riquadri per foglio), dopo le pagine già presenti. */
+function aggiungiEtichettePdf(pdf, o){
     const { larghezza, altezza, riquadroL, riquadroA } = ETICHETTA;
     const totale = vociEtichette(o).length;
     let indice = 0;
 
-    fogliEtichette(o).forEach((foglio, f) => {
-        if(f > 0) pdf.addPage();
+    fogliEtichette(o).forEach(foglio => {
+        pdf.addPage();
 
         foglio.forEach((voce, i) => {
             const colonna = i % 2, riga = Math.floor(i / 2);
@@ -1595,8 +1577,6 @@ function pdfEtichetta(o){
         pdf.setLineDashPattern([], 0);
         pdf.setDrawColor(0);
     });
-
-    return pdf;
 }
 
 function righeCapi(lavori){
@@ -1688,42 +1668,25 @@ function apriPianoSettimana(){
 }
 
 /*
-Dopo la conferma di un ordine: chiudendo le etichette si chiede se sono state
-stampate; con "Sì" si apre la ricevuta, con "No" si resta sulle etichette.
-Chiudendo la ricevuta dell'ordine appena registrato si chiede se è stata stampata.
+Chiudendo ricevuta ed etichette dell'ordine appena registrato si chiede se sono
+state stampate: con "No" si resta sul documento, con "Sì" si chiude.
 */
 async function chiudiAnteprima(){
     if(!$("#dialogo").hidden) return;
 
-    if(flussoStampa === "etichetta" && documentoCorrente.tipo === "etichette"){
-        const risposta = await chiedi(
-            "Hai stampato l'etichetta?",
-            "",
-            [{ valore:"no", testo:"No, torna alla stampa" }, { valore:"si", testo:"Sì", primario:true }]
-        );
-        if(risposta !== "si") return;
-        etichettaStampata = true;
-        flussoStampa = "ricevuta";
-        $("#anteprima").hidden = true;
-        aggiornaTicket();
-        return apriRicevuta(documentoCorrente.ordine);
-    }
-
-    /* Ricevuta (documento A4 legato a un ordine) dell'ordine appena registrato */
-    const ricevutaNuovoOrdine = documentoCorrente.tipo === "a4" && documentoCorrente.ordine &&
+    const documentiNuovoOrdine = documentoCorrente.tipo === "ordine" &&
         ordineRegistrato && documentoCorrente.ordine.id === ordineRegistrato.id;
-    if(ricevutaNuovoOrdine){
+    if(documentiNuovoOrdine){
         const risposta = await chiedi(
-            "Hai stampato la ricevuta?",
+            "Hai stampato ricevuta ed etichette?",
             "",
             [{ valore:"no", testo:"No, torna alla stampa" }, { valore:"si", testo:"Sì", primario:true }]
         );
         if(risposta !== "si") return;
-        ricevutaStampata = true;
+        documentiStampati = true;
         aggiornaTicket();
     }
 
-    if(documentoCorrente.tipo === "a4") flussoStampa = null;
     $("#anteprima").hidden = true;
 }
 
@@ -1735,8 +1698,22 @@ $("#scaricaPdf").addEventListener("click", async () => {
     const b = $("#scaricaPdf");
     if(!window.html2canvas || !window.jspdf) return;
 
-    if(documentoCorrente.tipo === "etichette"){
-        pdfEtichetta(documentoCorrente.ordine).save(nomeFilePdf);
+    /* Ricevuta + etichette: pagina 1 la ricevuta (immagine), poi le etichette (testo vettoriale). */
+    if(documentoCorrente.tipo === "ordine"){
+        b.disabled = true;
+        b.textContent = "Creazione PDF…";
+        try{
+            const canvas = await html2canvas($(".pagina-ricevuta"), { scale:2, backgroundColor:"#ffffff", windowWidth:1000 });
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({ unit:"mm", format:"a4" });
+            const rapporto = Math.min(210 / canvas.width, 297 / canvas.height);
+            pdf.addImage(canvas.toDataURL("image/jpeg",0.92), "JPEG", 0, 0, canvas.width * rapporto, canvas.height * rapporto);
+            aggiungiEtichettePdf(pdf, documentoCorrente.ordine);
+            pdf.save(nomeFilePdf);
+        }finally{
+            b.disabled = false;
+            b.textContent = "Scarica PDF";
+        }
         return;
     }
 
