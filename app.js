@@ -1292,11 +1292,12 @@ function testaDocumento(riferimentoEtichetta, riferimento, sottotitolo){
 let documentoCorrente = { tipo:"a4", ordine:null };
 
 /*
-Etichette: una per ogni tipo di capo dell'ordine, sempre 97 × 138 mm.
-Ogni foglio A4 è diviso in 4 riquadri uguali (105 × 148,5 mm): fino a 4 etichette
-per foglio, dalla quinta si passa a un nuovo foglio.
+Etichette: una per tipo di capo (una per pezzo per ceste e mezze ceste),
+ognuna su una pagina A4 intera. Il disegno (97 × 138 mm) è ingrandito per
+riempire la pagina con 10 mm di margine: circa 190 × 270 mm.
 */
-const ETICHETTA = { larghezza:97, altezza:138, riquadroL:105, riquadroA:148.5, perFoglio:4 };
+const ETICHETTA = { larghezza:97, altezza:138, perFoglio:1 };
+ETICHETTA.scala = Math.min((210 - 20) / ETICHETTA.larghezza, (297 - 20) / ETICHETTA.altezza);
 
 function mostraDocumento(titolo, html, nomeFile, tipo = "a4", ordine = null){
     documentoCorrente = { tipo, ordine };
@@ -1397,13 +1398,15 @@ function htmlEtichetta(o, voce, indice, totale){
         </div>`;
 }
 
-/* Fogli A4 con le etichette: una per tipo di capo (una per pezzo per ceste e mezze ceste), 4 riquadri per foglio. */
+/* Pagine A4 con le etichette: una etichetta per pagina, ingrandita e centrata. */
 function htmlPagineEtichette(o){
-    const totale = vociEtichette(o).length;
-    let indice = 0;
-    return fogliEtichette(o).map(foglio => `
+    const voci = vociEtichette(o);
+    const { larghezza, altezza, scala } = ETICHETTA;
+    return voci.map((voce, i) => `
         <div class="pagina-etichette">
-            ${[0,1,2,3].map(i => `<div class="riquadro">${foglio[i] ? htmlEtichetta(o, foglio[i], ++indice, totale) : ""}</div>`).join("")}
+            <div class="et-scala" style="width:${(larghezza * scala).toFixed(2)}mm;height:${(altezza * scala).toFixed(2)}mm">
+                <div style="transform:scale(${scala.toFixed(4)});transform-origin:0 0">${htmlEtichetta(o, voce, i + 1, voci.length)}</div>
+            </div>
         </div>`).join("");
 }
 
@@ -1461,67 +1464,68 @@ function apriDocumentiOrdine(o){
 }
 
 /*
-Disegna nel PDF l'etichetta di un tipo di capo (97 × 138 mm) con l'angolo
-in alto a sinistra in (x0, y0). Testo vettoriale, solo nero.
+Disegna nel PDF l'etichetta di un tipo di capo. Il disegno è pensato a 97 × 138 mm
+e viene ingrandito di "s" (per la pagina intera), con l'angolo in alto a sinistra
+in (x0, y0). Testo vettoriale, solo nero.
 */
-function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0){
+function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0, s = 1){
     const c = voce.c;
-    const X = x => x0 + x, Y = y => y0 + y;
+    const X = x => x0 + x * s, Y = y => y0 + y * s, F = n => n * s;
     const W = ETICHETTA.larghezza, sx = 4, dx = W - 4, larghezza = dx - sx;
     const creato = daISO(o.creato.slice(0,10));
-    const taglia = (testo, max) => pdf.splitTextToSize(testo, max)[0];
+    const taglia = (testo, max) => pdf.splitTextToSize(testo, F(max))[0];
     const lavare = !!servizioDi(o, c);   /* bordo spesso per "lavare" e "solo lavare" */
 
     pdf.setTextColor(0);
     pdf.setDrawColor(0);
 
     /* Intestazione */
-    pdf.addImage(LOGO, "PNG", X(sx), Y(4), 9, 10.4);
+    pdf.addImage(LOGO, "PNG", X(sx), Y(4), F(9), F(10.4));
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(8.5);
+    pdf.setFontSize(F(8.5));
     pdf.text("ASSOCIAZIONE FREQUENZE", X(sx + 11.4), Y(8.8));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(7.5);
+    pdf.setFontSize(F(7.5));
     pdf.text("Stireria · " + SEDI[o.sede], X(sx + 11.4), Y(12.8));
 
-    pdf.setFontSize(6.5);
-    pdf.text("ORDINE", X(dx), Y(7.6), { align:"right", charSpace:0.3 });
+    pdf.setFontSize(F(6.5));
+    pdf.text("ORDINE", X(dx), Y(7.6), { align:"right", charSpace:F(0.3) });
     pdf.setFont("courier","bold");
-    pdf.setFontSize(17);
+    pdf.setFontSize(F(17));
     pdf.text("N° " + numeroOrdine(o.id), X(dx), Y(14.2), { align:"right" });
 
-    pdf.setLineWidth(0.4);
+    pdf.setLineWidth(F(0.4));
     pdf.line(X(sx), Y(17.6), X(dx), Y(17.6));
 
     /* Cliente */
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(15);
+    pdf.setFontSize(F(15));
     pdf.text(taglia(o.nome + " " + o.cognome, larghezza), X(sx), Y(25.6));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(8);
+    pdf.setFontSize(F(8));
     pdf.text(taglia(telefonoLeggibile(o.telefono) + " · registrato il " +
         pad(creato.getDate()) + "." + pad(creato.getMonth()+1) + ". alle " + o.creato.slice(11), larghezza), X(sx), Y(30.8));
 
     /* Tipo di capo di questa etichetta. Niente fondi neri (toner):
        se da lavare, bordo spesso e "DA LAVARE E STIRARE". */
-    pdf.setLineWidth(lavare ? 1.4 : 0.6);
-    pdf.roundedRect(X(sx), Y(35), larghezza, 38, 2, 2, "S");
+    pdf.setLineWidth(F(lavare ? 1.4 : 0.6));
+    pdf.roundedRect(X(sx), Y(35), F(larghezza), F(38), F(2), F(2), "S");
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(7);
-    pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(40.3), { charSpace:0.3 });
+    pdf.setFontSize(F(7));
+    pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(40.3), { charSpace:F(0.3) });
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(34);
+    pdf.setFontSize(F(34));
     pdf.text(String(quantitaVoce(o, voce)), X(sx + 4), Y(56));
-    pdf.setFontSize(16);
+    pdf.setFontSize(F(16));
     pdf.text(taglia(categoriaVoce(o, voce).toUpperCase(), larghezza - 8), X(sx + 4), Y(64.3));
-    pdf.setFontSize(10);
-    pdf.text(servizioCapo(o, c), X(sx + 4), Y(70.2), { charSpace:0.2 });
+    pdf.setFontSize(F(10));
+    pdf.text(servizioCapo(o, c), X(sx + 4), Y(70.2), { charSpace:F(0.2) });
 
     /* Comanda completa: tutti i capi dell'ordine, quello di questa etichetta in grassetto */
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(6.5);
-    pdf.text("COMANDA COMPLETA", X(sx), Y(78.8), { charSpace:0.3 });
-    pdf.setFontSize(8);
+    pdf.setFontSize(F(6.5));
+    pdf.text("COMANDA COMPLETA", X(sx), Y(78.8), { charSpace:F(0.3) });
+    pdf.setFontSize(F(8));
     capiEtichette(o).forEach((x, i) => {
         const y = Y(82.6 + i * 3.5);
         pdf.setFont("helvetica", x === c ? "bold" : "normal");
@@ -1531,51 +1535,38 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0){
     });
 
     /* Ritiro */
-    pdf.setLineWidth(0.5);
-    pdf.roundedRect(X(sx), Y(100.5), larghezza, 33.5, 2, 2, "S");
+    pdf.setLineWidth(F(0.5));
+    pdf.roundedRect(X(sx), Y(100.5), F(larghezza), F(33.5), F(2), F(2), "S");
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(7);
-    pdf.text("RITIRO", X(sx + 4), Y(106.5), { charSpace:0.3 });
+    pdf.setFontSize(F(7));
+    pdf.text("RITIRO", X(sx + 4), Y(106.5), { charSpace:F(0.3) });
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(17);
+    pdf.setFontSize(F(17));
     pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 4), Y(114.5));
     pdf.setFont("helvetica","normal");
-    pdf.setFontSize(9);
+    pdf.setFontSize(F(9));
     pdf.text(ORA_RITIRO, X(sx + 4), Y(120.8));
     pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.6));
 
     /* Pagamento in un riquadro (solo contorno): "PAGATO" oppure "DA PAGARE" */
-    pdf.setLineWidth(0.6);
-    pdf.roundedRect(X(dx - 34), Y(120), 30, 10, 1.2, 1.2, "S");
+    pdf.setLineWidth(F(0.6));
+    pdf.roundedRect(X(dx - 34), Y(120), F(30), F(10), F(1.2), F(1.2), "S");
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(11);
+    pdf.setFontSize(F(11));
     pdf.text(o.pagato ? "PAGATO" : "DA PAGARE", X(dx - 19), Y(126.9), { align:"center" });
 }
 
-/* Aggiunge al PDF i fogli A4 con le etichette (4 riquadri per foglio), dopo le pagine già presenti. */
+/* Aggiunge al PDF le etichette, una per pagina A4, dopo le pagine già presenti. */
 function aggiungiEtichettePdf(pdf, o){
-    const { larghezza, altezza, riquadroL, riquadroA } = ETICHETTA;
-    const totale = vociEtichette(o).length;
-    let indice = 0;
+    const { larghezza, altezza, scala } = ETICHETTA;
+    const voci = vociEtichette(o);
 
-    fogliEtichette(o).forEach(foglio => {
+    voci.forEach((voce, i) => {
         pdf.addPage();
-
-        foglio.forEach((voce, i) => {
-            const colonna = i % 2, riga = Math.floor(i / 2);
-            disegnaEtichetta(pdf, o, voce, ++indice, totale,
-                colonna * riquadroL + (riquadroL - larghezza) / 2,
-                riga * riquadroA + (riquadroA - altezza) / 2);
-        });
-
-        /* Linee di taglio tra i riquadri */
-        pdf.setDrawColor(170);
-        pdf.setLineWidth(0.2);
-        pdf.setLineDashPattern([2, 2], 0);
-        pdf.line(riquadroL, 0, riquadroL, 297);
-        pdf.line(0, riquadroA, 210, riquadroA);
-        pdf.setLineDashPattern([], 0);
-        pdf.setDrawColor(0);
+        disegnaEtichetta(pdf, o, voce, i + 1, voci.length,
+            (210 - larghezza * scala) / 2,
+            (297 - altezza * scala) / 2,
+            scala);
     });
 }
 
