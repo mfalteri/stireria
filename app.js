@@ -1303,7 +1303,7 @@ function mostraDocumento(titolo, html, nomeFile, tipo = "a4", ordine = null){
     documentoCorrente = { tipo, ordine };
     $("#anteprimaTitolo").textContent = titolo;
     $("#anteprimaNota").textContent = tipo === "ordine"
-        ? "Pagina 1: ricevuta · poi le etichette da ritagliare lungo le linee · " + nomeFile
+        ? "Pagina 1: ricevuta · poi un'etichetta per pagina · " + nomeFile
         : nomeFile;
     $("#foglio").innerHTML = html;
     $("#foglio").classList.toggle("foglio-etichette", tipo === "ordine");
