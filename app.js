@@ -1556,8 +1556,8 @@ function aggiungiEtichettePdf(pdf, o){
 function righeCapi(lavori){
     return lavori.map((l,i) => {
         const o = l.ordine;
-        const nota = [
-            l.previsto ? "in arretrato, previsto " + dataBreve(daISO(l.previsto)) : "",
+        /* Negli arretrati sotto il nome c'è solo la data di ritiro. */
+        const nota = l.previsto ? "Ritiro " + dataBreve(daISO(o.ritiro)) : [
             l.soloLavaggio ? "solo lavaggio, da non stirare" : "",
             !l.inizia ? "continua dal giorno prima" : "",
             !l.finisce ? "prosegue il giorno dopo" : "",
@@ -1567,7 +1567,7 @@ function righeCapi(lavori){
             <tr>
                 <td><span class="spunta"></span></td>
                 <td class="doc-numero">#${numeroOrdine(o.id)}</td>
-                <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
+                <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong></span><span class="piccolo">${l.previsto ? "" : SEDI[o.sede] + " · "}${nota}</span></td>
                 ${CAPI.map(c => {
                     const q = quantitaInPiano(l, c);
                     /* S = stirare, SL = stirare e lavare, L = solo lavare */
