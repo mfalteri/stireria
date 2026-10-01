@@ -1421,7 +1421,7 @@ function htmlRicevuta(o){
     const creato = o.creato.slice(0,10);
     const contatti = CONTATTI_SEDI[o.sede];
     return testaDocumento("Ordine", "N° " + numeroOrdine(o.id),
-        "Stireria · Sede " + SEDI[o.sede] +
+        "Sede " + SEDI[o.sede] +
         `<span class="contatti-sede">${contatti.indirizzo}<br>Telefono: ${contatti.telefono}</span>`) + `
         <h1>Ricevuta d'ordine</h1>
         <p class="sottotitolo">Grazie per averci affidato i suoi capi.</p>
@@ -1429,7 +1429,6 @@ function htmlRicevuta(o){
             <dt>Cliente</dt><dd>${esc(o.nome)} ${esc(o.cognome)}</dd>
             <dt>Telefono</dt><dd>${esc(telefonoLeggibile(o.telefono))}</dd>
             <dt>Registrato il</dt><dd>${dataLunga(daISO(creato))}, ore ${o.creato.slice(11)}</dd>
-            <dt>Sede</dt><dd>${SEDI[o.sede]}</dd>
         </dl>
         <h2>Capi consegnati</h2>
         <table class="doc-tab">
