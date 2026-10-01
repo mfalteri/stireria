@@ -23,6 +23,12 @@ const AGGIORNAMENTO_MS = 30000;       // ricarica periodica dei dati
 
 const SEDI = { emporio:"Emporio", piazzetta:"Piazzetta" };
 
+/* Indirizzo e telefono delle sedi, stampati in alto sulla ricevuta. */
+const CONTATTI_SEDI = {
+    emporio:   { indirizzo:"Via San Gottardo 23, 6943 Vezia", telefono:"091 682 86 60" },
+    piazzetta: { indirizzo:"Piazza Soldati 1, 6948 Porza",     telefono:"091 940 15 76" }
+};
+
 const CAPI = [
     { k:"camicie",     nome:"Camicie",          uno:"camicia",          breve:"Camicie",  tempo:"tempoCamicia",    prezzo:"prezzoCamicia" },
     { k:"lenzuola",    nome:"Lenzuola",         uno:"lenzuolo",         breve:"Lenzuola", tempo:"tempoLenzuolo",   prezzo:"prezzoLenzuolo" },
@@ -1413,7 +1419,10 @@ function htmlPagineEtichette(o){
 /* Contenuto della ricevuta A4. */
 function htmlRicevuta(o){
     const creato = o.creato.slice(0,10);
-    return testaDocumento("Ordine", "N° " + numeroOrdine(o.id), "Stireria · Sede " + SEDI[o.sede]) + `
+    const contatti = CONTATTI_SEDI[o.sede];
+    return testaDocumento("Ordine", "N° " + numeroOrdine(o.id),
+        "Stireria · Sede " + SEDI[o.sede] +
+        `<span class="contatti-sede">${contatti.indirizzo}<br>Telefono: ${contatti.telefono}</span>`) + `
         <h1>Ricevuta d'ordine</h1>
         <p class="sottotitolo">Grazie per averci affidato i suoi capi.</p>
         <dl class="doc-kv">
