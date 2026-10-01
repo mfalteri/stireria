@@ -561,20 +561,26 @@ let ritiroScelto = null;
 let documentiAperti = false;     /* ricevuta ed etichette aperte almeno una volta */
 let documentiStampati = false;   /* risposta "Sì" a "Hai stampato ricevuta ed etichette?" */
 
+/*
+Servizio di ogni capo, scelto con le icone (una sola, obbligatoria se il capo c'è):
+stirare, lavare e stirare, e solo per ceste e mezze ceste "lavare" (solo lavare).
+*/
+const SERVIZI = [
+    { valore:"stirare", icona:"icone/stirare.png",        testo:"Stirare" },
+    { valore:"lavare",  icona:"icone/lavare-stirare.png", testo:"Lavare e stirare" },
+    { valore:"solo",    icona:"icone/lavare.png",         testo:"Lavare (senza stirare)", soloLavare:true }
+];
+
 function disegnaCapi(){
     $("#capi").innerHTML = CAPI.map(c => `
         <div class="capo" data-capo="${c.k}">
             <strong>${c.nome}</strong>
-            <span class="lava-gruppo">
-                ${c.soloLavare ? `
-                <label class="lava lava-solo" for="${campoSoloLavare(c)}" title="Solo lavare, senza stirare: ${c.nome.toLowerCase()}">
-                    <input id="${campoSoloLavare(c)}" type="checkbox" data-solo-lavare="${c.k}">
-                    <span>Solo lavare</span>
-                </label>` : ""}
-                <label class="lava" for="${campoLavare(c)}" title="Lavare e stirare: ${c.nome.toLowerCase()}">
-                    <input id="${campoLavare(c)}" type="checkbox" data-lavare="${c.k}">
-                    <span>Lavare</span>
-                </label>
+            <span class="servizi" role="radiogroup" aria-label="Servizio per ${c.nome.toLowerCase()}">
+                ${SERVIZI.map(s => !s.soloLavare || c.soloLavare ? `
+                <label class="servizio servizio-${s.valore}" title="${s.testo}">
+                    <input type="radio" name="servizio-${c.k}" value="${s.valore}" data-servizio="${c.k}" aria-label="${s.testo}">
+                    <img src="${s.icona}" alt="">
+                </label>` : `<span class="servizio-vuoto"></span>`).join("")}
             </span>
             <div class="stepper">
                 <button type="button" data-passo="-1" aria-label="Togli ${c.uno}">−</button>
@@ -592,19 +598,24 @@ function disegnaCapi(){
         input.addEventListener("input", aggiornaTicket);
     });
 
-    /* "Lavare" (lavare e stirare) e "Solo lavare" si escludono a vicenda. */
-    const soloDi = k => $(`[data-solo-lavare="${k}"]`);
-    const lavareDi = k => $(`[data-lavare="${k}"]`);
-
-    $$("[data-lavare]").forEach(box => box.addEventListener("change", () => {
-        if(box.checked && soloDi(box.dataset.lavare)) soloDi(box.dataset.lavare).checked = false;
+    /* I radio dello stesso capo hanno lo stesso "name": se ne sceglie uno solo. */
+    $$("[data-servizio]").forEach(r => r.addEventListener("change", () => {
+        r.closest(".capo").classList.remove("manca-servizio");
+        if(!capiSenzaServizio().length && $("#erroreOrdine").textContent.startsWith("Scegli il servizio")) mostraErroreOrdine("");
         aggiornaTicket();
     }));
+}
 
-    $$("[data-solo-lavare]").forEach(box => box.addEventListener("change", () => {
-        if(box.checked) lavareDi(box.dataset.soloLavare).checked = false;
-        aggiornaTicket();
-    }));
+/* Servizio scelto per un capo: "stirare", "lavare", "solo" oppure null se non scelto. */
+function servizioScelto(c){
+    const r = $(`[data-servizio="${c.k}"]:checked`);
+    return r ? r.value : null;
+}
+
+/* Capi presenti nell'ordine per cui non è stato scelto il servizio. */
+function capiSenzaServizio(){
+    const capi = capiInseriti();
+    return CAPI.filter(c => capi[c.k] > 0 && !servizioScelto(c));
 }
 
 function capiInseriti(){
@@ -617,8 +628,8 @@ function capiInseriti(){
 function lavaggiInseriti(){
     const lavaggi = {};
     CAPI.forEach(c => {
-        const solo = c.soloLavare && $("#" + campoSoloLavare(c)).checked;
-        lavaggi[c.k] = solo ? "solo" : $("#" + campoLavare(c)).checked;
+        const s = servizioScelto(c);
+        lavaggi[c.k] = s === "solo" ? "solo" : s === "lavare";
     });
     return lavaggi;
 }
@@ -806,6 +817,11 @@ $("#formOrdine").addEventListener("submit", async e => {
     const erroreTelefono = controllaTelefono(telefono);
     if(erroreTelefono) return mostraErroreOrdine(erroreTelefono,"telefono");
     if(!CAPI.some(c => capi[c.k] > 0)) return mostraErroreOrdine("Aggiungi almeno un capo.");
+    const senzaServizio = capiSenzaServizio();
+    $$(".capo").forEach(r => r.classList.toggle("manca-servizio", senzaServizio.some(c => c.k === r.dataset.capo)));
+    if(senzaServizio.length) return mostraErroreOrdine(
+        "Scegli il servizio (stirare, lavare e stirare" + (senzaServizio.some(c => c.soloLavare) ? " o lavare" : "") + ") per: " +
+        senzaServizio.map(c => c.nome.toLowerCase()).join(", ") + ".");
     if(!ritiroScelto) return mostraErroreOrdine("Scegli il giorno di ritiro.");
 
     mostraErroreOrdine("");
@@ -864,7 +880,8 @@ function nuovoOrdine(mettiFuoco = true){
     bloccaModulo(false);
     ["nome","cognome","telefono","osservazioni"].forEach(id => $("#" + id).value = "");
     CAPI.forEach(c => $("#" + c.k).value = 0);
-    $$("[data-lavare], [data-solo-lavare]").forEach(box => box.checked = false);
+    $$("[data-servizio]").forEach(r => r.checked = false);
+    $$(".capo").forEach(r => r.classList.remove("manca-servizio"));
     mostraErroreOrdine("");
     aggiornaTicket();
     if(mettiFuoco) $("#nome").focus();
