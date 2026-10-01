@@ -562,13 +562,7 @@ let documentiAperti = false;     /* ricevuta ed etichette aperte almeno una volt
 let documentiStampati = false;   /* risposta "Sì" a "Hai stampato ricevuta ed etichette?" */
 
 function disegnaCapi(){
-    $("#capi").innerHTML = `
-        <div class="capi-testa">
-            <label class="lava lava-tutto" for="lavareTutto">
-                <input id="lavareTutto" type="checkbox">
-                <span>Lavare tutto</span>
-            </label>
-        </div>` + CAPI.map(c => `
+    $("#capi").innerHTML = CAPI.map(c => `
         <div class="capo" data-capo="${c.k}">
             <strong>${c.nome}</strong>
             <span class="lava-gruppo">
@@ -604,31 +598,13 @@ function disegnaCapi(){
 
     $$("[data-lavare]").forEach(box => box.addEventListener("change", () => {
         if(box.checked && soloDi(box.dataset.lavare)) soloDi(box.dataset.lavare).checked = false;
-        aggiornaLavareTutto();
         aggiornaTicket();
     }));
 
     $$("[data-solo-lavare]").forEach(box => box.addEventListener("change", () => {
         if(box.checked) lavareDi(box.dataset.soloLavare).checked = false;
-        aggiornaLavareTutto();
         aggiornaTicket();
     }));
-
-    /* "Lavare tutto" accende o spegne "lavare e stirare" per tutti i capi */
-    $("#lavareTutto").addEventListener("change", () => {
-        $$("[data-lavare]").forEach(box => box.checked = $("#lavareTutto").checked);
-        if($("#lavareTutto").checked) $$("[data-solo-lavare]").forEach(box => box.checked = false);
-        aggiornaLavareTutto();
-        aggiornaTicket();
-    });
-}
-
-/* "Lavare tutto" spuntato se lo sono tutti, a metà se solo alcuni. */
-function aggiornaLavareTutto(){
-    const caselle = $$("[data-lavare]");
-    const spuntate = caselle.filter(b => b.checked).length;
-    $("#lavareTutto").checked = spuntate === caselle.length;
-    $("#lavareTutto").indeterminate = spuntate > 0 && spuntate < caselle.length;
 }
 
 function capiInseriti(){
@@ -887,7 +863,6 @@ function nuovoOrdine(mettiFuoco = true){
     ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
     CAPI.forEach(c => $("#" + c.k).value = 0);
     $$("[data-lavare], [data-solo-lavare]").forEach(box => box.checked = false);
-    aggiornaLavareTutto();
     mostraErroreOrdine("");
     aggiornaTicket();
     if(mettiFuoco) $("#nome").focus();
