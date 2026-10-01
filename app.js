@@ -565,10 +565,11 @@ let documentiStampati = false;   /* risposta "Sì" a "Hai stampato ricevuta ed e
 Servizio di ogni capo, scelto con le icone (una sola, obbligatoria se il capo c'è):
 stirare, lavare e stirare, e solo per ceste e mezze ceste "lavare" (solo lavare).
 */
+/* Ordine delle colonne: lavare (solo ceste e mezze ceste, altrimenti vuota), stirare, lavare e stirare. */
 const SERVIZI = [
+    { valore:"solo",    icona:"icone/lavare.png",         testo:"Lavare (senza stirare)", soloLavare:true },
     { valore:"stirare", icona:"icone/stirare.png",        testo:"Stirare" },
-    { valore:"lavare",  icona:"icone/lavare-stirare.png", testo:"Lavare e stirare" },
-    { valore:"solo",    icona:"icone/lavare.png",         testo:"Lavare (senza stirare)", soloLavare:true }
+    { valore:"lavare",  icona:"icone/lavare-stirare.png", testo:"Lavare e stirare" }
 ];
 
 function disegnaCapi(){
