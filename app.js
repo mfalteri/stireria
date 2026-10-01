@@ -799,6 +799,7 @@ $("#formOrdine").addEventListener("submit", async e => {
     const telefono = normalizzaTelefono($("#telefono").value);
     const capi = capiInseriti();
     const lavaggi = lavaggiInseriti();
+    const osservazioni = $("#osservazioni").value.trim().slice(0,120) || null;
 
     if(!nome) return mostraErroreOrdine("Inserisci il nome del cliente.","nome");
     if(!cognome) return mostraErroreOrdine("Inserisci il cognome del cliente.","cognome");
@@ -828,7 +829,8 @@ $("#formOrdine").addEventListener("submit", async e => {
         ritiro: ritiroScelto,
         ...Object.fromEntries(CAPI.map(c => [campoLavare(c), lavaggi[c.k] === true && capi[c.k] > 0])),
         ...Object.fromEntries(CAPI.filter(c => c.soloLavare).map(c => [campoSoloLavare(c), lavaggi[c.k] === "solo" && capi[c.k] > 0])),
-        pagato: pagamento === "si"
+        pagato: pagamento === "si",
+        osservazioni
     }).select().single();
 
     if(error){
@@ -853,14 +855,14 @@ $("#formOrdine").addEventListener("submit", async e => {
 });
 
 function bloccaModulo(bloccato){
-    $$("#formOrdine input, #formOrdine button").forEach(el => el.disabled = bloccato);
+    $$("#formOrdine input, #formOrdine textarea, #formOrdine button").forEach(el => el.disabled = bloccato);
 }
 
 function nuovoOrdine(mettiFuoco = true){
     ordineRegistrato = null;
     ritiroScelto = null;
     bloccaModulo(false);
-    ["nome","cognome","telefono"].forEach(id => $("#" + id).value = "");
+    ["nome","cognome","telefono","osservazioni"].forEach(id => $("#" + id).value = "");
     CAPI.forEach(c => $("#" + c.k).value = 0);
     $$("[data-lavare], [data-solo-lavare]").forEach(box => box.checked = false);
     mostraErroreOrdine("");
@@ -1346,7 +1348,7 @@ function htmlEtichetta(o, voce, indice, totale){
     const c = voce.c;
     const creato = daISO(o.creato.slice(0,10));
     return `
-        <div class="et">
+        <div class="et${o.osservazioni ? " con-osservazioni" : ""}">
             <div class="et-testa">
                 <img src="${LOGO}" alt="Frequenze">
                 <div class="et-ente"><strong>ASSOCIAZIONE FREQUENZE</strong><span>Stireria · ${SEDI[o.sede]}</span></div>
@@ -1369,6 +1371,11 @@ function htmlEtichetta(o, voce, indice, totale){
                         <span>${o[x.k]}</span><span>${nomeCapo(x, o[x.k])}</span><span>${servizioBreve(o, x)}</span>
                     </div>`).join("")}
             </div>
+            ${o.osservazioni ? `
+            <div class="et-osservazioni">
+                <span>Osservazioni</span>
+                <p>${esc(o.osservazioni)}</p>
+            </div>` : ""}
             <div class="et-ritiro">
                 <span>Ritiro</span>
                 <strong>${dataPunti(daISO(o.ritiro))}</strong>
@@ -1459,6 +1466,11 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0, s = 1){
     const creato = daISO(o.creato.slice(0,10));
     const taglia = (testo, max) => pdf.splitTextToSize(testo, F(max))[0];
     const lavare = !!servizioDi(o, c);   /* bordo spesso per "lavare" e "solo lavare" */
+    /* Con osservazioni il riquadro capo, la comanda e il ritiro sono più compatti. */
+    const oss = !!o.osservazioni;
+    const P = oss
+        ? { capo:[35,32], indice:40.3, qta:[30,53.5], cat:61, serv:65.5, comanda:71.5, riga:[75,3.4], ritiro:[106,28], dy:-1 }
+        : { capo:[35,38], indice:40.3, qta:[34,56],   cat:64.3, serv:70.2, comanda:78.8, riga:[82.6,3.5], ritiro:[100.5,33.5], dy:0 };
 
     pdf.setTextColor(0);
     pdf.setDrawColor(0);
@@ -1493,44 +1505,55 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0, s = 1){
     /* Tipo di capo di questa etichetta. Niente fondi neri (toner):
        se da lavare, bordo spesso e "DA LAVARE E STIRARE". */
     pdf.setLineWidth(F(lavare ? 1.4 : 0.6));
-    pdf.roundedRect(X(sx), Y(35), F(larghezza), F(38), F(2), F(2), "S");
+    pdf.roundedRect(X(sx), Y(P.capo[0]), F(larghezza), F(P.capo[1]), F(2), F(2), "S");
     pdf.setFont("helvetica","normal");
     pdf.setFontSize(F(7));
-    pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(40.3), { charSpace:F(0.3) });
+    pdf.text(("Etichetta " + indice + " di " + totale).toUpperCase(), X(sx + 4), Y(P.indice), { charSpace:F(0.3) });
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(F(34));
-    pdf.text(String(quantitaVoce(o, voce)), X(sx + 4), Y(56));
+    pdf.setFontSize(F(P.qta[0]));
+    pdf.text(String(quantitaVoce(o, voce)), X(sx + 4), Y(P.qta[1]));
     pdf.setFontSize(F(16));
-    pdf.text(taglia(categoriaVoce(o, voce).toUpperCase(), larghezza - 8), X(sx + 4), Y(64.3));
+    pdf.text(taglia(categoriaVoce(o, voce).toUpperCase(), larghezza - 8), X(sx + 4), Y(P.cat));
     pdf.setFontSize(F(10));
-    pdf.text(servizioCapo(o, c), X(sx + 4), Y(70.2), { charSpace:F(0.2) });
+    pdf.text(servizioCapo(o, c), X(sx + 4), Y(P.serv), { charSpace:F(0.2) });
 
     /* Comanda completa: tutti i capi dell'ordine, quello di questa etichetta in grassetto */
     pdf.setFont("helvetica","normal");
     pdf.setFontSize(F(6.5));
-    pdf.text("COMANDA COMPLETA", X(sx), Y(78.8), { charSpace:F(0.3) });
+    pdf.text("COMANDA COMPLETA", X(sx), Y(P.comanda), { charSpace:F(0.3) });
     pdf.setFontSize(F(8));
     capiEtichette(o).forEach((x, i) => {
-        const y = Y(82.6 + i * 3.5);
+        const y = Y(P.riga[0] + i * P.riga[1]);
         pdf.setFont("helvetica", x === c ? "bold" : "normal");
         pdf.text(String(o[x.k]), X(sx + 8), y, { align:"right" });
         pdf.text(nomeCapo(x, o[x.k]), X(sx + 9.5), y);
         pdf.text(servizioBreve(o, x), X(dx), y, { align:"right" });
     });
 
+    /* Osservazioni (facoltative), al massimo 3 righe */
+    if(oss){
+        pdf.setFont("helvetica","normal");
+        pdf.setFontSize(F(6.5));
+        pdf.text("OSSERVAZIONI", X(sx), Y(93), { charSpace:F(0.3) });
+        pdf.setFontSize(F(8));
+        pdf.splitTextToSize(o.osservazioni, F(larghezza)).slice(0,3)
+            .forEach((riga, i) => pdf.text(riga, X(sx), Y(96.6 + i * 3.2)));
+    }
+
     /* Ritiro */
+    const r = P.ritiro[0] - 100.5 + P.dy;   /* spostamento del contenuto rispetto al riquadro standard */
     pdf.setLineWidth(F(0.5));
-    pdf.roundedRect(X(sx), Y(100.5), F(larghezza), F(33.5), F(2), F(2), "S");
+    pdf.roundedRect(X(sx), Y(P.ritiro[0]), F(larghezza), F(P.ritiro[1]), F(2), F(2), "S");
     pdf.setFont("helvetica","normal");
     pdf.setFontSize(F(7));
-    pdf.text("RITIRO", X(sx + 4), Y(106.5), { charSpace:F(0.3) });
+    pdf.text("RITIRO", X(sx + 4), Y(106.5 + r), { charSpace:F(0.3) });
     pdf.setFont("helvetica","bold");
     pdf.setFontSize(F(17));
-    pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 4), Y(114.5));
+    pdf.text(dataPunti(daISO(o.ritiro)), X(sx + 4), Y(114.5 + r));
     pdf.setFont("helvetica","normal");
     pdf.setFontSize(F(9));
-    pdf.text(ORA_RITIRO, X(sx + 4), Y(120.8));
-    pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.6));
+    pdf.text(ORA_RITIRO, X(sx + 4), Y(120.8 + r));
+    pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.6 + r));
 
     /* Pagamento in un riquadro (solo contorno): "PAGATO" oppure "DA PAGARE" */
     pdf.setLineWidth(F(0.6));

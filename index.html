@@ -170,6 +170,17 @@ button,input,select{font:inherit;color:inherit;}
 
 .campo{display:grid;gap:6px;}
 .campo > span{font-size:13px;font-weight:600;color:var(--ink-2);}
+.campo textarea{
+    width:100%;
+    padding:10px 14px;
+    border:1px solid var(--line-2);
+    border-radius:10px;
+    background:var(--surface);
+    font:inherit;
+    font-size:16px;
+    resize:vertical;
+}
+.campo textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
 .campo input{
     width:100%;
     min-height:46px;
@@ -1101,6 +1112,12 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
 }
+/* Con osservazioni: riquadro capo e comanda più bassi, poi le osservazioni */
+.et.con-osservazioni{grid-template-rows:14mm 16mm 31mm 22mm 13mm 1fr;}
+.et.con-osservazioni .et-quantita{font-size:30pt;margin-top:2mm;}
+.et-osservazioni{display:grid;align-content:start;gap:.6mm;font-size:8pt;line-height:1.25;overflow:hidden;}
+.et-osservazioni span{font-size:6.5pt;letter-spacing:.08em;text-transform:uppercase;}
+.et-osservazioni p{margin:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
 .et-testa{display:flex;align-items:center;gap:2.4mm;border-bottom:.4mm solid #000;padding-bottom:1.6mm;}
 .et-testa img{width:9mm;height:auto;}
 .et-ente{display:grid;gap:.5mm;}
@@ -1312,6 +1329,14 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
                     <fieldset class="gruppo">
                         <legend>Capi consegnati</legend>
                         <div class="capi" id="capi"></div>
+                    </fieldset>
+
+                    <fieldset class="gruppo">
+                        <legend>Osservazioni</legend>
+                        <label class="campo">
+                            <span>Facoltative · stampate sulle etichette</span>
+                            <textarea id="osservazioni" rows="2" maxlength="120" placeholder="Es. macchia sul colletto, bottone mancante…"></textarea>
+                        </label>
                     </fieldset>
 
                     <fieldset class="gruppo">

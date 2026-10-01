@@ -537,3 +537,11 @@ $$;
 
 revoke all on function public.carico_giornaliero() from public, anon;
 grant execute on function public.carico_giornaliero() to authenticated;
+
+-- =====================================================================
+-- Osservazioni facoltative (stampate sulle etichette), max 120 caratteri.
+-- Nessun grant di update: si scrivono solo alla registrazione.
+-- =====================================================================
+alter table public.ordini
+    add column if not exists osservazioni text
+    check (osservazioni is null or char_length(osservazioni) <= 120);
