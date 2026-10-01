@@ -643,13 +643,19 @@ function aggiornaTotale(){
     const lavaggi = lavaggiInseriti();
     const totale = calcolaImporto(capi, lavaggi);
     const righe = CAPI.filter(c => capi[c.k] > 0)
-        .map(c => `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${lavaggi[c.k] ? " <em>" + testoServizio(lavaggi[c.k]) + "</em>" : ""}</span><span>${chf(capi[c.k] * prezzoUnitario(c, lavaggi[c.k]))}</span></li>`)
+        .map(c => {
+            /* Servizio di ogni riga; finché non è scelto lo si segnala */
+            const scelto = servizioScelto(c);
+            const testo = !scelto ? "servizio da scegliere" : scelto === "stirare" ? "stiratura" : testoServizio(lavaggi[c.k]);
+            return `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()} <em${scelto ? "" : ` class="da-scegliere"`}>${testo}</em></span><span>${chf(capi[c.k] * prezzoUnitario(c, lavaggi[c.k]))}</span></li>`;
+        })
         .join("");
+    const descrizione = capiSenzaServizio().length ? "servizio da scegliere" : descriviServizio(capi, lavaggi);
 
     $("#totaleOrdine").innerHTML = `
         ${righe ? `<ul class="totale-righe">${righe}</ul>` : ""}
         <div class="totale-somma">
-            <span>Totale <small>${descriviServizio(capi, lavaggi)}</small></span>
+            <span>Totale <small>${descrizione}</small></span>
             <strong>${chf(totale)}</strong>
         </div>`;
     return totale;
