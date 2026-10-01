@@ -1427,7 +1427,8 @@ function htmlRicevuta(o){
             <strong>${dataLunga(daISO(o.ritiro))}</strong>
             <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
         </div>
-        <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>`;
+        <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>
+        <p class="doc-privacy"><b>Protezione dei dati.</b> Raccogliamo nome, cognome e numero di telefono esclusivamente per la gestione degli ordini e dei rapporti con la clientela. I dati sono accessibili solo al personale autorizzato e non vengono comunicati a terzi salvo necessità legate all'esecuzione dell'ordine.</p>`;
 }
 
 /*
