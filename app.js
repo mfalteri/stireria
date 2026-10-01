@@ -1557,6 +1557,7 @@ function righeCapi(lavori){
     return lavori.map((l,i) => {
         const o = l.ordine;
         const nota = [
+            l.previsto ? "in arretrato, previsto " + dataBreve(daISO(l.previsto)) : "",
             l.soloLavaggio ? "solo lavaggio, da non stirare" : "",
             !l.inizia ? "continua dal giorno prima" : "",
             !l.finisce ? "prosegue il giorno dopo" : "",
@@ -1576,27 +1577,58 @@ function righeCapi(lavori){
     }).join("");
 }
 
+/*
+Arretrati per il piano del giorno "iso": lavori previsti in giorni già passati
+(prima di oggi e prima di "iso") e non ancora segnati come pronti.
+Un ordine diviso su più giorni compare una volta sola; se è già nella lista
+del giorno scelto non viene ripetuto.
+*/
+function arretratiPer(iso, programma){
+    const limite = iso < oggiISO() ? iso : oggiISO();
+    const chiave = l => l.ordine.id + (l.soloLavaggio ? "L" : "");
+    const delGiorno = new Set((programma[iso] || []).map(chiave));
+    const visti = new Map();
+    Object.keys(programma).filter(g => g < limite).sort().forEach(g =>
+        programma[g].forEach(l => {
+            const k = chiave(l);
+            if(delGiorno.has(k) || visti.has(k)) return;
+            visti.set(k, { ...l, minuti:0, inizia:true, finisce:true, previsto:g });
+        }));
+    return [...visti.values()].sort((a,b) =>
+        (b.soloLavaggio ? 1 : 0) - (a.soloLavaggio ? 1 : 0) || a.ordine.id - b.ordine.id);
+}
+
+function tabellaPiano(lavori){
+    const totale = CAPI.reduce((t,c) => (t[c.k] = lavori.reduce((s,l) => s + quantitaInPiano(l, c), 0), t), {});
+    return `
+        <table class="doc-tab">
+            <thead><tr><th></th><th>Ordine</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}</tr></thead>
+            <tbody>${righeCapi(lavori)}</tbody>
+            <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
+        </table>`;
+}
+
 function apriPianoGiorno(iso){
     const d = daISO(iso);
-    const lavori = programmaLavoro()[iso] || [];
-    const totale = CAPI.reduce((t,c) => (t[c.k] = lavori.reduce((s,l) => s + quantitaInPiano(l, c), 0), t), {});
+    const programma = programmaLavoro();
+    const lavori = programma[iso] || [];
+    const arretrati = arretratiPer(iso, programma);
     const daStirare = lavori.filter(l => !l.soloLavaggio).length;
     const soloLavaggio = lavori.length - daStirare;
     const conteggio = [
         daStirare || !soloLavaggio ? daStirare + " " + (daStirare === 1 ? "ordine" : "ordini") + " da stirare" : "",
-        soloLavaggio ? soloLavaggio + " " + (soloLavaggio === 1 ? "ordine" : "ordini") + " solo da lavare" : ""
+        soloLavaggio ? soloLavaggio + " " + (soloLavaggio === 1 ? "ordine" : "ordini") + " solo da lavare" : "",
+        arretrati.length ? arretrati.length + " in arretrato dai giorni precedenti" : ""
     ].filter(Boolean).join(" · ");
 
     const html = testaDocumento("Piano di lavoro", dataBreve(d), "Stireria · piano giornaliero") + `
         <h1>${dataLunga(d)}</h1>
         <p class="sottotitolo">${conteggio}</p>
+        ${arretrati.length ? `
+        <h2>Arretrati dai giorni precedenti (non ancora pronti)</h2>
+        ${tabellaPiano(arretrati)}` : ""}
         <h2>Ordini da lavorare</h2>
-        ${lavori.length ? `
-        <table class="doc-tab">
-            <thead><tr><th></th><th>Ordine</th><th>Cliente</th>${CAPI.map(c => `<th class="n">${c.breve}</th>`).join("")}</tr></thead>
-            <tbody>${righeCapi(lavori)}</tbody>
-            <tfoot><tr><td></td><td></td><td>Totale</td>${CAPI.map(c => `<td class="n">${totale[c.k]}</td>`).join("")}</tr></tfoot>
-        </table>` : '<p class="sottotitolo">Nessun ordine da lavorare in questo giorno.</p>'}
+        ${lavori.length ? tabellaPiano(lavori) : '<p class="sottotitolo">Nessun ordine da lavorare in questo giorno.</p>'}
         <p class="doc-nota doc-nota-grande"><b>S</b> = stirare · <b>SL</b> = stirare e lavare · <b>L</b> = lavare (senza stirare).<br>Una volta completato un ordine, premere <b>Segna pronto</b> nella sezione <b>Ordini</b>.</p>`;
 
     mostraDocumento("Piano di lavoro · " + dataLunga(d), html, "Piano-lavoro_" + iso + ".pdf");
