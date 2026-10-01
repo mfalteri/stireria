@@ -406,6 +406,7 @@ button,input,select{font:inherit;color:inherit;}
     text-transform:uppercase;
     color:var(--ink-3);
 }
+.gruppo legend.legenda-grande{font-size:16px;font-weight:700;color:var(--ink);}
 .riga2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 
 /* Caselle Lavare / Pagato */
@@ -1332,10 +1333,9 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
                     </fieldset>
 
                     <fieldset class="gruppo">
-                        <legend>Osservazioni</legend>
+                        <legend class="legenda-grande">Osservazioni</legend>
                         <label class="campo">
-                            <span>Facoltative · stampate sulle etichette</span>
-                            <textarea id="osservazioni" rows="2" maxlength="120" placeholder="Es. macchia sul colletto, bottone mancante…"></textarea>
+                            <textarea id="osservazioni" rows="2" maxlength="120" aria-label="Osservazioni" placeholder="Es. macchia sul colletto, bottone mancante…"></textarea>
                         </label>
                     </fieldset>
 
