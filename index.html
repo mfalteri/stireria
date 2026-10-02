@@ -224,6 +224,51 @@ button,input,select{font:inherit;color:inherit;}
 }
 .segmenti button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
 
+/* ---------- Resoconti ---------- */
+.res-barra{display:flex;gap:12px 20px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.res-sezioni{display:flex;gap:8px 16px;flex-wrap:wrap;}
+.res-interruttore{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--ink-2);cursor:pointer;user-select:none;}
+.res-interruttore input{position:absolute;opacity:0;width:1px;height:1px;}
+.res-pista{position:relative;width:34px;height:20px;border-radius:99px;background:var(--line-2);transition:background .15s;flex:none;}
+.res-pista::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;}
+.res-interruttore input:checked + .res-pista{background:var(--accent);}
+.res-interruttore input:checked + .res-pista::after{transform:translateX(14px);}
+.res-interruttore input:focus-visible + .res-pista{outline:3px solid var(--accent);outline-offset:2px;}
+.res-interruttore:has(input:not(:checked)){color:var(--ink-3);}
+.res-kpi{margin-bottom:18px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));}
+.res-kpi .kpi-voce strong{font-size:24px;white-space:nowrap;}
+.res-blocco{margin-bottom:18px;padding:20px 22px;}
+.res-testa{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+.res-testa h3{font-size:18px;font-weight:700;}
+.res-testa .segmenti button{min-height:32px;font-size:13px;}
+.res-grafico{position:relative;}
+.res-zona{cursor:default;}
+.res-zona.attiva{fill:var(--accent-soft);fill-opacity:.45;}
+.res-tooltip{
+    position:absolute;
+    transform:translateX(-50%);
+    padding:6px 10px;
+    border-radius:8px;
+    background:var(--ink);
+    color:var(--bg);
+    font-size:13px;
+    font-weight:600;
+    white-space:nowrap;
+    pointer-events:none;
+}
+.res-nota{margin-top:8px;font-size:12.5px;color:var(--ink-3);}
+.res-scorri{overflow-x:auto;}
+.tabella.res-tab{width:100%;min-width:560px;}
+.tabella.res-tab td{padding:10px 12px;}
+.tabella.res-tab th{padding-left:12px;padding-right:12px;}
+.res-tab th, .res-tab td{white-space:nowrap;}
+.res-tab .n{text-align:right;font-variant-numeric:tabular-nums;}
+.res-tab tfoot td{font-weight:700;border-top:1px solid var(--line-2);}
+.res-col-quota{width:22%;min-width:90px;}
+.res-quota{display:block;height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;}
+.res-quota i{display:block;height:100%;border-radius:99px;background:var(--accent);}
+.res-vuoto{margin-bottom:18px;}
+
 /* ---------- Login ---------- */
 .login{
     min-height:100vh;
@@ -286,7 +331,7 @@ button,input,select{font:inherit;color:inherit;}
 .marchio{display:flex;align-items:center;gap:12px;}
 .marchio .logo{width:34px;}
 .marchio strong{font-size:19px;font-weight:800;font-stretch:115%;letter-spacing:-.01em;}
-.schede{display:flex;gap:4px;flex:1;min-width:0;}
+.schede{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;}   /* con molte schede si scorre, senza coprire l'utente */
 .scheda{
     display:inline-flex;
     align-items:center;
@@ -1063,6 +1108,7 @@ button,input,select{font:inherit;color:inherit;}
 .doc-nota{margin-top:22px;color:#555;font-size:12px;}
 .doc-privacy{margin-top:14px;padding-top:10px;border-top:1px solid #d6d6d6;color:#666;font-size:10.5px;line-height:1.45;}
 .doc-privacy + .doc-privacy{margin-top:6px;padding-top:0;border-top:0;}
+.doc-kv .piccolo{color:#666;font-size:12px;}
 .doc-firma{display:flex;gap:40px;margin-top:40px;}
 .doc-firma div{flex:1;border-top:1px solid #141414;padding-top:6px;color:#555;font-size:11.5px;}
 .doc-giorno{break-inside:avoid;margin-top:22px;}
@@ -1202,6 +1248,8 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
     .consegne{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 @media (max-width:640px){
+    .res-kpi .kpi-voce strong{font-size:19px;}
+    .res-blocco{padding:16px;}
     .barra-in{padding:10px 16px;gap:10px;}
     .schede{order:3;flex-basis:100%;overflow-x:auto;padding-bottom:2px;}
     .utente{margin-left:auto;}
@@ -1283,6 +1331,7 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
                 <button class="scheda" role="tab" data-vista="ordini" id="tab-ordini">Ordini <span id="badgeOrdini" class="conteggio"></span></button>
                 <button class="scheda" role="tab" data-vista="piano" id="tab-piano">Piano settimanale</button>
                 <button class="scheda" role="tab" data-vista="consegne" id="tab-consegne">Piano consegne</button>
+                <button class="scheda" role="tab" data-vista="resoconti" id="tab-resoconti">Resoconti</button>
             </nav>
             <div class="utente">
                 <span class="avatar" id="avatar" aria-hidden="true"></span>
@@ -1409,6 +1458,39 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
                 </table>
                 <p id="nessunOrdine" class="vuoto" hidden>Nessun ordine corrisponde alla ricerca.</p>
             </div>
+        </section>
+
+        <!-- Resoconti (solo admin) -->
+        <section id="vista-resoconti" role="tabpanel" aria-labelledby="tab-resoconti" hidden>
+            <div class="intesta">
+                <div>
+                    <p class="eyebrow" id="resAmbito"></p>
+                    <h2 id="resTitolo"></h2>
+                </div>
+                <div class="intesta-azioni">
+                    <div class="segmenti" id="resTipo" role="group" aria-label="Periodo">
+                        <button type="button" data-periodo="settimana" aria-pressed="true">Settimana</button>
+                        <button type="button" data-periodo="mese" aria-pressed="false">Mese</button>
+                    </div>
+                    <div class="nav-sett">
+                        <button class="btn" id="resPrec" type="button" aria-label="Periodo precedente">‹</button>
+                        <button class="btn" id="resOggi" type="button">Questa settimana</button>
+                        <button class="btn" id="resSucc" type="button" aria-label="Periodo successivo">›</button>
+                    </div>
+                    <button class="btn btn-primario" id="resStampa" type="button">Stampa resoconto</button>
+                </div>
+            </div>
+
+            <div class="res-barra">
+                <div class="filtri" id="resSede" role="group" aria-label="Sede">
+                    <button class="filtro" type="button" data-sede="tutte" aria-pressed="true">Tutte le sedi</button>
+                    <button class="filtro" type="button" data-sede="emporio" aria-pressed="false">Emporio</button>
+                    <button class="filtro" type="button" data-sede="piazzetta" aria-pressed="false">Piazzetta</button>
+                </div>
+                <div class="res-sezioni" id="resSezioni" role="group" aria-label="Sezioni da mostrare e stampare"></div>
+            </div>
+
+            <div id="resContenuto"></div>
         </section>
 
         <!-- Piano settimanale -->

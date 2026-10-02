@@ -218,6 +218,7 @@ async function ricarica(){
     aggiornaBadge();
     if(vista === "nuovo" && !ordineRegistrato) aggiornaTicket();
     if(vista === "ordini") disegnaOrdini();
+    if(vista === "resoconti" && !(attivo && attivo.closest && attivo.closest("#vista-resoconti"))) disegnaResoconti();
     if((vista === "piano" || vista === "consegne") && !(attivo && attivo.closest && attivo.closest("#vista-piano input"))) disegnaPiano();
 }
 
@@ -376,6 +377,7 @@ function entra(profilo){
     $("#barraPianoAdmin").hidden = !isAdmin();
     $("#barraSedeConsegne").hidden = !isAdmin();
     $("#tab-piano").hidden = !isAdmin();
+    $("#tab-resoconti").hidden = !isAdmin();
     $("#ordiniAmbito").textContent = isAdmin() ? "Tutte le sedi" : "Sede " + utente.nome;
 
     sedeOrdine = utente.sede || "emporio";
@@ -392,7 +394,7 @@ function entra(profilo){
 
     let vista = "nuovo";
     try{ vista = sessionStorage.getItem("frequenze-stireria-vista") || vista; }catch(e){}
-    if(["nuovo","ordini","piano","consegne"].includes(location.hash.slice(1))) vista = location.hash.slice(1);
+    if(["nuovo","ordini","piano","consegne","resoconti"].includes(location.hash.slice(1))) vista = location.hash.slice(1);
     apriVista(vista);
 
     clearInterval(timerAggiornamento);
@@ -490,16 +492,18 @@ Piano settimanale e piano consegne usano la stessa sezione della pagina.
 */
 function apriVista(vista){
     if(vista === "piano" && !isAdmin()) vista = "consegne";
-    if(!["nuovo","ordini","piano","consegne"].includes(vista)) vista = "nuovo";
+    if(vista === "resoconti" && !isAdmin()) vista = "ordini";
+    if(!["nuovo","ordini","piano","consegne","resoconti"].includes(vista)) vista = "nuovo";
 
     $$(".scheda").forEach(b => b.setAttribute("aria-selected", String(b.dataset.vista === vista)));
     const sezione = vista === "consegne" ? "piano" : vista;
-    ["nuovo","ordini","piano"].forEach(v => $("#vista-" + v).hidden = v !== sezione);
+    ["nuovo","ordini","piano","resoconti"].forEach(v => $("#vista-" + v).hidden = v !== sezione);
     $("#vista-piano").setAttribute("aria-labelledby", vista === "consegne" ? "tab-consegne" : "tab-piano");
     try{ sessionStorage.setItem("frequenze-stireria-vista", vista); }catch(e){}
 
     if(vista === "nuovo") aggiornaTicket();
     if(vista === "ordini") disegnaOrdini();
+    if(vista === "resoconti") disegnaResoconti();
     if(sezione === "piano"){
         vistaPiano = vista === "consegne" ? "consegne" : "carico";
         disegnaPiano();
@@ -1816,6 +1820,385 @@ $("#scaricaPdf").addEventListener("click", async () => {
         b.textContent = "Scarica PDF";
     }
 });
+
+/* ---------- Resoconti (solo admin): capi e incassi per settimana o mese ---------- */
+
+const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+const NOMI_SERVIZI = { stirare:"Stiratura", lavare:"Lavaggio e stiratura", solo:"Solo lavaggio" };
+
+/* Sezioni che si possono accendere o spegnere (la scelta resta salvata nel browser). */
+const SEZIONI_RESOCONTO = [
+    { k:"riepilogo", nome:"Riepilogo" },
+    { k:"andamento", nome:"Andamento giornaliero" },
+    { k:"capi",      nome:"Capi per tipo" },
+    { k:"servizi",   nome:"Servizi" },
+    { k:"sedi",      nome:"Confronto sedi" },
+    { k:"pagamenti", nome:"Pagamenti e stato" }
+];
+const CHIAVE_SEZIONI = "frequenze-stireria-resoconti";
+
+let periodoRes = "settimana";          // "settimana" | "mese"
+let riferimentoRes = oggi();            // un giorno qualsiasi del periodo mostrato
+let sedeRes = "tutte";
+let misuraAndamento = "incasso";       // "incasso" | "capi" | "ordini"
+let sezioniRes = Object.fromEntries(SEZIONI_RESOCONTO.map(s => [s.k, true]));
+try{ Object.assign(sezioniRes, JSON.parse(localStorage.getItem(CHIAVE_SEZIONI) || "{}")); }catch(e){}
+
+const chiaveServizio = s => s === "solo" ? "solo" : s ? "lavare" : "stirare";
+const intero = n => Math.round(n).toLocaleString("de-CH");
+const percento = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+
+/* Periodo (date ISO incluse) che contiene il giorno d, più il periodo precedente per il confronto. */
+function periodoDi(tipo, d){
+    if(tipo === "mese"){
+        const inizio = new Date(d.getFullYear(), d.getMonth(), 1, 12);
+        const fine = new Date(d.getFullYear(), d.getMonth() + 1, 0, 12);
+        const prec = new Date(d.getFullYear(), d.getMonth() - 1, 1, 12);
+        return {
+            inizio: dataISO(inizio), fine: dataISO(fine),
+            titolo: MESI[d.getMonth()] + " " + d.getFullYear(),
+            intervallo: dataLunga(inizio) + " – " + dataLunga(fine),
+            nomePrecedente: "il mese precedente",
+            precedente: () => periodoDi("mese", prec)
+        };
+    }
+    const lunedi = lunediDi(d), domenica = sposta(lunedi, 6);
+    return {
+        inizio: dataISO(lunedi), fine: dataISO(domenica),
+        titolo: "Settimana " + numeroSettimana(lunedi) + " · " + lunedi.getFullYear(),
+        intervallo: dataLunga(lunedi) + " – " + dataLunga(domenica),
+        nomePrecedente: "la settimana precedente",
+        precedente: () => periodoDi("settimana", sposta(lunedi, -7))
+    };
+}
+
+/*
+Numeri del periodo, per data di consegna dell'ordine. Gli importi per tipo di capo
+e per servizio sono ripartiti dall'importo registrato dell'ordine, in proporzione
+ai prezzi: la somma torna sempre con il totale incassato.
+*/
+function datiResoconto(periodo, sede){
+    const ordini = db.ordini.filter(o => o.data >= periodo.inizio && o.data <= periodo.fine && (sede === "tutte" || o.sede === sede));
+    const vuoto = () => ({ ordini:0, capi:0, importo:0, incassato:0 });
+    const r = {
+        ...vuoto(),
+        perCapo: Object.fromEntries(CAPI.map(c => [c.k, { capi:0, importo:0, stirare:0, lavare:0, solo:0 }])),
+        perServizio: { stirare:{ capi:0, importo:0 }, lavare:{ capi:0, importo:0 }, solo:{ capi:0, importo:0 } },
+        perSede: { emporio:vuoto(), piazzetta:vuoto() },
+        perGiorno: {},
+        stato: { lavorazione:0, pronto:0, ritirato:0 },
+        nonPagati: 0
+    };
+    for(const o of ordini){
+        const capi = CAPI.reduce((s,c) => s + (o[c.k] || 0), 0);
+        const listino = CAPI.reduce((s,c) => s + (o[c.k] || 0) * prezzoUnitario(c, servizioDi(o, c)), 0);
+        const fattore = listino > 0 ? o.importo / listino : 0;
+        const incassato = o.pagato ? o.importo : 0;
+
+        r.ordini++; r.capi += capi; r.importo += o.importo; r.incassato += incassato;
+        if(!o.pagato) r.nonPagati++;
+        r.stato[o.stato] = (r.stato[o.stato] || 0) + 1;
+
+        const s = r.perSede[o.sede];
+        if(s){ s.ordini++; s.capi += capi; s.importo += o.importo; s.incassato += incassato; }
+
+        const g = r.perGiorno[o.data] || (r.perGiorno[o.data] = vuoto());
+        g.ordini++; g.capi += capi; g.importo += o.importo; g.incassato += incassato;
+
+        for(const c of CAPI){
+            const n = o[c.k] || 0;
+            if(!n) continue;
+            const servizio = chiaveServizio(servizioDi(o, c));
+            const importo = n * prezzoUnitario(c, servizioDi(o, c)) * fattore;
+            const pc = r.perCapo[c.k];
+            pc.capi += n; pc.importo += importo; pc[servizio] += n;
+            r.perServizio[servizio].capi += n;
+            r.perServizio[servizio].importo += importo;
+        }
+    }
+    r.medio = r.ordini ? r.importo / r.ordini : 0;
+    return r;
+}
+
+/* Giorni del grafico: solo i lavorativi (gli ordini del fine settimana contano dal venerdì). */
+function giorniPeriodo(periodo){
+    const giorni = [];
+    for(let d = daISO(periodo.inizio); dataISO(d) <= periodo.fine; d = sposta(d, 1))
+        if(lavorativo(d)) giorni.push(dataISO(d));
+    return giorni;
+}
+
+/* Variazione rispetto al periodo precedente, in testo (niente colori: non è uno stato). */
+function variazione(attuale, precedente, nome){
+    if(!precedente && !attuale) return "come " + nome;
+    if(!precedente) return "nessun dato " + nome.replace(/^(il|la) /, "per " + "$1 ");
+    const p = Math.round((attuale - precedente) / precedente * 100);
+    if(p === 0) return "come " + nome;
+    return (p > 0 ? "▲ +" : "▼ ") + p + "% rispetto " + nome.replace(/^il /, "al ").replace(/^la /, "alla ");
+}
+
+const valoreMisura = (g, misura) => !g ? 0 : misura === "incasso" ? g.importo : misura === "capi" ? g.capi : g.ordini;
+const testoMisura = (v, misura) => misura === "incasso" ? chf(v) : intero(v) + (misura === "capi" ? " capi" : v === 1 ? " ordine" : " ordini");
+
+/*
+Grafico a colonne (una sola serie, quindi senza legenda). In stampa: grigio,
+nessuna interazione. A schermo: tooltip al passaggio del mouse o al tocco.
+*/
+function svgAndamento(dati, giorni, misura, stampa){
+    const L = 720, A = 220, sx = 56, dx = 8, su = 12, giu = 30;
+    const valori = giorni.map(iso => valoreMisura(dati.perGiorno[iso], misura));
+    const massimo = Math.max(...valori, 0);
+    /* Scala "tonda" con 4 righe guida */
+    const passo = (() => {
+        if(!massimo) return 1;
+        const grezzo = massimo / 4, mag = 10 ** Math.floor(Math.log10(grezzo));
+        return [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= grezzo);
+    })();
+    const tetto = passo * 4;
+    const largo = (L - sx - dx) / giorni.length;
+    const barra = Math.max(4, Math.min(28, largo - 6));
+    const y = v => su + (A - su - giu) * (1 - v / tetto);
+    const colore = stampa ? "#6b6b6b" : "var(--accent)";
+    const testo = stampa ? "#555" : "var(--ink-3)";
+    const riga = stampa ? "#ddd" : "var(--line)";
+    const ogni = giorni.length > 12 ? Math.ceil(giorni.length / 12) : 1;
+
+    const guide = [0,1,2,3,4].map(i => {
+        const v = passo * i, yy = y(v);
+        return `<line x1="${sx}" x2="${L - dx}" y1="${yy}" y2="${yy}" stroke="${riga}" stroke-width="1"/>
+            <text x="${sx - 8}" y="${yy + 4}" text-anchor="end" font-size="11" fill="${testo}">${intero(v)}</text>`;
+    }).join("");
+
+    const colonne = giorni.map((iso, i) => {
+        const v = valori[i], d = daISO(iso);
+        const cx = sx + largo * i + largo / 2;
+        const h = Math.max(0, y(0) - y(v));
+        const r = Math.min(4, barra / 2, h);
+        const x0 = cx - barra / 2, y0 = y(v);
+        /* Solo gli angoli in alto arrotondati: la colonna parte dalla linea di base */
+        const forma = h > 0 ? `<path d="M${x0},${y(0)} V${y0 + r} Q${x0},${y0} ${x0 + r},${y0} H${x0 + barra - r} Q${x0 + barra},${y0} ${x0 + barra},${y0 + r} V${y(0)} Z" fill="${colore}"/>` : "";
+        const etichetta = i % ogni === 0
+            ? `<text x="${cx}" y="${A - 10}" text-anchor="middle" font-size="11" fill="${testo}">${giorni.length > 7 ? d.getDate() : GIORNI_BREVI[d.getDay()] + " " + d.getDate()}</text>` : "";
+        const area = stampa ? "" : `<rect class="res-zona" x="${sx + largo * i}" y="${su}" width="${largo}" height="${A - su - giu}" fill="transparent"
+            data-testo="${esc(dataLunga(d) + ": " + testoMisura(v, misura))}"/>`;
+        return forma + etichetta + area;
+    }).join("");
+
+    return `<svg viewBox="0 0 ${L} ${A}" width="100%" role="img" aria-label="Andamento giornaliero: ${misura}" style="display:block;max-width:100%;height:auto;font-family:inherit">
+        ${guide}<line x1="${sx}" x2="${L - dx}" y1="${y(0)}" y2="${y(0)}" stroke="${testo}" stroke-width="1"/>${colonne}</svg>`;
+}
+
+/* Barra orizzontale di proporzione (una sola tinta), dentro le tabelle. */
+const barraQuota = (v, max, stampa) =>
+    `<span class="res-quota${stampa ? " stampa" : ""}"><i style="width:${max ? Math.max(v ? 2 : 0, v / max * 100) : 0}%"></i></span>`;
+
+/* ----- Tabelle condivise tra schermo e stampa ----- */
+
+function tabellaCapi(d, stampa){
+    const max = Math.max(...CAPI.map(c => d.perCapo[c.k].capi), 0);
+    return `
+        <table class="${stampa ? "doc-tab" : "tabella res-tab"}">
+            <thead><tr><th>Capo</th><th class="n">Stiratura</th><th class="n">Lavaggio e stiratura</th><th class="n">Solo lavaggio</th><th class="n">Totale capi</th>${stampa ? "" : "<th></th>"}<th class="n">Importo</th></tr></thead>
+            <tbody>${CAPI.map(c => {
+                const p = d.perCapo[c.k];
+                return `<tr>
+                    <td>${c.nome}</td>
+                    <td class="n">${p.stirare || "–"}</td>
+                    <td class="n">${p.lavare || "–"}</td>
+                    <td class="n">${c.soloLavare ? (p.solo || "–") : ""}</td>
+                    <td class="n"><strong>${p.capi}</strong></td>
+                    ${stampa ? "" : `<td class="res-col-quota">${barraQuota(p.capi, max)}</td>`}
+                    <td class="n">${chf(p.importo)}</td>
+                </tr>`;
+            }).join("")}</tbody>
+            <tfoot><tr><td>Totale</td>
+                <td class="n">${d.perServizio.stirare.capi}</td><td class="n">${d.perServizio.lavare.capi}</td><td class="n">${d.perServizio.solo.capi}</td>
+                <td class="n">${d.capi}</td>${stampa ? "" : "<td></td>"}<td class="n">${chf(d.importo)}</td></tr></tfoot>
+        </table>`;
+}
+
+function tabellaServizi(d, stampa){
+    const max = Math.max(...Object.values(d.perServizio).map(s => s.importo), 0);
+    return `
+        <table class="${stampa ? "doc-tab" : "tabella res-tab"}">
+            <thead><tr><th>Servizio</th><th class="n">Capi</th><th class="n">Quota capi</th><th class="n">Importo</th><th class="n">Quota importo</th>${stampa ? "" : "<th></th>"}</tr></thead>
+            <tbody>${Object.entries(NOMI_SERVIZI).map(([k, nome]) => {
+                const s = d.perServizio[k];
+                return `<tr><td>${nome}</td><td class="n">${s.capi}</td><td class="n">${percento(s.capi, d.capi)}</td>
+                    <td class="n">${chf(s.importo)}</td><td class="n">${percento(s.importo, d.importo)}</td>
+                    ${stampa ? "" : `<td class="res-col-quota">${barraQuota(s.importo, max)}</td>`}</tr>`;
+            }).join("")}</tbody>
+        </table>`;
+}
+
+function tabellaSedi(d, stampa){
+    return `
+        <table class="${stampa ? "doc-tab" : "tabella res-tab"}">
+            <thead><tr><th>Sede</th><th class="n">Ordini</th><th class="n">Capi</th><th class="n">Importo</th><th class="n">Incassato</th><th class="n">Da incassare</th><th class="n">Quota importo</th></tr></thead>
+            <tbody>${Object.keys(SEDI).map(k => {
+                const s = d.perSede[k];
+                return `<tr><td>${SEDI[k]}</td><td class="n">${s.ordini}</td><td class="n">${s.capi}</td><td class="n">${chf(s.importo)}</td>
+                    <td class="n">${chf(s.incassato)}</td><td class="n">${chf(s.importo - s.incassato)}</td><td class="n">${percento(s.importo, d.importo)}</td></tr>`;
+            }).join("")}</tbody>
+            <tfoot><tr><td>Totale</td><td class="n">${d.ordini}</td><td class="n">${d.capi}</td><td class="n">${chf(d.importo)}</td><td class="n">${chf(d.incassato)}</td><td class="n">${chf(d.importo - d.incassato)}</td><td></td></tr></tfoot>
+        </table>`;
+}
+
+function tabellaPagamenti(d, stampa){
+    return `
+        <table class="${stampa ? "doc-tab" : "tabella res-tab"}">
+            <thead><tr><th>Voce</th><th class="n">Ordini</th><th class="n">Importo</th></tr></thead>
+            <tbody>
+                <tr><td>Pagati</td><td class="n">${d.ordini - d.nonPagati}</td><td class="n">${chf(d.incassato)}</td></tr>
+                <tr><td>Da pagare</td><td class="n">${d.nonPagati}</td><td class="n">${chf(d.importo - d.incassato)}</td></tr>
+                <tr><td>In lavorazione</td><td class="n">${d.stato.lavorazione}</td><td></td></tr>
+                <tr><td>Pronti, non ancora ritirati</td><td class="n">${d.stato.pronto}</td><td></td></tr>
+                <tr><td>Consegnati al cliente</td><td class="n">${d.stato.ritirato}</td><td></td></tr>
+            </tbody>
+        </table>`;
+}
+
+/* ----- Vista a schermo ----- */
+
+function disegnaResoconti(){
+    const periodo = periodoDi(periodoRes, riferimentoRes);
+    const prec = periodo.precedente();
+    const d = datiResoconto(periodo, sedeRes);
+    const p = datiResoconto(prec, sedeRes);
+    const giorni = giorniPeriodo(periodo);
+
+    $("#resAmbito").textContent = (sedeRes === "tutte" ? "Tutte le sedi" : "Sede " + SEDI[sedeRes]) + " · " + periodo.intervallo;
+    $("#resTitolo").textContent = periodo.titolo;
+    $("#resOggi").textContent = periodoRes === "mese" ? "Questo mese" : "Questa settimana";
+    $$("#resTipo button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.periodo === periodoRes)));
+    $$("#resSede button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sede === sedeRes)));
+    $$("#resMisura button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.misura === misuraAndamento)));
+    $$("#resSezioni input").forEach(i => i.checked = !!sezioniRes[i.dataset.sezione]);
+    /* Il confronto tra sedi ha senso solo con tutte le sedi */
+    const sedi = sezioniRes.sedi && sedeRes === "tutte";
+
+    const np = periodo.nomePrecedente;
+    const blocchi = [];
+    if(sezioniRes.riepilogo) blocchi.push(`
+        <div class="kpi res-kpi">
+            <div class="kpi-voce"><span>Importo ordini</span><strong>${chf(d.importo)}</strong><small>${variazione(d.importo, p.importo, np)}</small></div>
+            <div class="kpi-voce"><span>Incassato</span><strong>${chf(d.incassato)}</strong><small>${chf(d.importo - d.incassato)} ancora da incassare</small></div>
+            <div class="kpi-voce"><span>Capi</span><strong>${intero(d.capi)}</strong><small>${variazione(d.capi, p.capi, np)}</small></div>
+            <div class="kpi-voce"><span>Ordini</span><strong>${intero(d.ordini)}</strong><small>${variazione(d.ordini, p.ordini, np)}</small></div>
+            <div class="kpi-voce"><span>Importo medio per ordine</span><strong>${chf(d.medio)}</strong><small>${d.ordini ? (d.capi / d.ordini).toFixed(1).replace(".", ",") + " capi in media" : "nessun ordine"}</small></div>
+        </div>`);
+    if(sezioniRes.andamento) blocchi.push(`
+        <div class="pannello res-blocco">
+            <div class="res-testa">
+                <h3>Andamento giornaliero</h3>
+                <div class="segmenti" id="resMisura" role="group" aria-label="Valore del grafico">
+                    <button type="button" data-misura="incasso" aria-pressed="${misuraAndamento === "incasso"}">Importo (CHF)</button>
+                    <button type="button" data-misura="capi" aria-pressed="${misuraAndamento === "capi"}">Capi</button>
+                    <button type="button" data-misura="ordini" aria-pressed="${misuraAndamento === "ordini"}">Ordini</button>
+                </div>
+            </div>
+            <div class="res-grafico">${svgAndamento(d, giorni, misuraAndamento, false)}<div class="res-tooltip" hidden></div></div>
+            <p class="res-nota">Per giorno di consegna dell'ordine. Gli ordini del sabato e della domenica contano dal venerdì.</p>
+        </div>`);
+    if(sezioniRes.capi) blocchi.push(`
+        <div class="pannello res-blocco"><div class="res-testa"><h3>Capi per tipo</h3></div><div class="res-scorri">${tabellaCapi(d, false)}</div></div>`);
+    if(sezioniRes.servizi) blocchi.push(`
+        <div class="pannello res-blocco"><div class="res-testa"><h3>Servizi</h3></div><div class="res-scorri">${tabellaServizi(d, false)}</div></div>`);
+    if(sedi) blocchi.push(`
+        <div class="pannello res-blocco"><div class="res-testa"><h3>Confronto sedi</h3></div><div class="res-scorri">${tabellaSedi(d, false)}</div></div>`);
+    if(sezioniRes.pagamenti) blocchi.push(`
+        <div class="pannello res-blocco"><div class="res-testa"><h3>Pagamenti e stato</h3></div><div class="res-scorri">${tabellaPagamenti(d, false)}</div></div>`);
+
+    $("#resContenuto").innerHTML = blocchi.length
+        ? (d.ordini ? "" : `<p class="vuoto res-vuoto">Nessun ordine registrato in questo periodo.</p>`) + blocchi.join("")
+        : `<p class="vuoto res-vuoto">Tutte le sezioni sono spente: attivane almeno una qui sopra.</p>`;
+    $("#resStampa").disabled = !blocchi.length;
+}
+
+/* Tooltip del grafico: al passaggio del mouse o al tocco su una colonna */
+$("#resContenuto").addEventListener("pointermove", e => {
+    const zona = e.target.closest(".res-zona");
+    const box = e.target.closest(".res-grafico");
+    const tip = box && box.querySelector(".res-tooltip");
+    $$(".res-zona.attiva").forEach(z => z !== zona && z.classList.remove("attiva"));
+    if(!tip) return;
+    if(!zona){ tip.hidden = true; return; }
+    zona.classList.add("attiva");
+    const r = box.getBoundingClientRect();
+    tip.textContent = zona.dataset.testo;
+    tip.hidden = false;
+    const x = Math.min(Math.max(e.clientX - r.left, 80), r.width - 80);
+    tip.style.left = x + "px";
+    tip.style.top = Math.max(0, e.clientY - r.top - 44) + "px";
+});
+$("#resContenuto").addEventListener("pointerleave", () => $$(".res-tooltip").forEach(t => t.hidden = true));
+$("#resContenuto").addEventListener("click", e => {
+    const b = e.target.closest("[data-misura]");
+    if(b){ misuraAndamento = b.dataset.misura; disegnaResoconti(); }
+});
+
+$$("#resTipo button").forEach(b => b.addEventListener("click", () => { periodoRes = b.dataset.periodo; disegnaResoconti(); }));
+$$("#resSede button").forEach(b => b.addEventListener("click", () => { sedeRes = b.dataset.sede; disegnaResoconti(); }));
+$("#resPrec").addEventListener("click", () => {
+    riferimentoRes = periodoRes === "mese" ? new Date(riferimentoRes.getFullYear(), riferimentoRes.getMonth() - 1, 1, 12) : sposta(riferimentoRes, -7);
+    disegnaResoconti();
+});
+$("#resSucc").addEventListener("click", () => {
+    riferimentoRes = periodoRes === "mese" ? new Date(riferimentoRes.getFullYear(), riferimentoRes.getMonth() + 1, 1, 12) : sposta(riferimentoRes, 7);
+    disegnaResoconti();
+});
+$("#resOggi").addEventListener("click", () => { riferimentoRes = oggi(); disegnaResoconti(); });
+
+$("#resSezioni").innerHTML = SEZIONI_RESOCONTO.map(s => `
+    <label class="res-interruttore">
+        <input type="checkbox" role="switch" data-sezione="${s.k}">
+        <span class="res-pista" aria-hidden="true"></span>
+        <span>${s.nome}</span>
+    </label>`).join("");
+$$("#resSezioni input").forEach(i => i.addEventListener("change", () => {
+    sezioniRes[i.dataset.sezione] = i.checked;
+    try{ localStorage.setItem(CHIAVE_SEZIONI, JSON.stringify(sezioniRes)); }catch(e){}
+    disegnaResoconti();
+}));
+
+/* ----- Stampa: le stesse sezioni accese a schermo ----- */
+
+function apriStampaResoconto(){
+    const periodo = periodoDi(periodoRes, riferimentoRes);
+    const prec = periodo.precedente();
+    const d = datiResoconto(periodo, sedeRes);
+    const p = datiResoconto(prec, sedeRes);
+    const ambito = sedeRes === "tutte" ? "Tutte le sedi" : "Sede " + SEDI[sedeRes];
+    const np = periodo.nomePrecedente;
+    const nomiMisura = { incasso:"importo (CHF)", capi:"capi", ordini:"ordini" };
+
+    let html = testaDocumento("Resoconto", (periodoRes === "mese" ? MESI[daISO(periodo.inizio).getMonth()] : "Sett. " + numeroSettimana(daISO(periodo.inizio))) + " " + periodo.inizio.slice(0,4),
+        "Stireria · resoconto " + (periodoRes === "mese" ? "mensile" : "settimanale")) + `
+        <h1>${periodo.titolo}</h1>
+        <p class="sottotitolo">${ambito} · ${periodo.intervallo}</p>`;
+    if(sezioniRes.riepilogo) html += `
+        <h2>Riepilogo</h2>
+        <dl class="doc-kv">
+            <dt>Importo ordini</dt><dd>${chf(d.importo)} <span class="piccolo">(${variazione(d.importo, p.importo, np)})</span></dd>
+            <dt>Incassato</dt><dd>${chf(d.incassato)} · da incassare ${chf(d.importo - d.incassato)}</dd>
+            <dt>Capi</dt><dd>${intero(d.capi)} <span class="piccolo">(${variazione(d.capi, p.capi, np)})</span></dd>
+            <dt>Ordini</dt><dd>${intero(d.ordini)} <span class="piccolo">(${variazione(d.ordini, p.ordini, np)})</span></dd>
+            <dt>Importo medio per ordine</dt><dd>${chf(d.medio)}</dd>
+        </dl>`;
+    if(sezioniRes.andamento) html += `
+        <h2>Andamento giornaliero · ${nomiMisura[misuraAndamento]}</h2>
+        ${svgAndamento(d, giorniPeriodo(periodo), misuraAndamento, true)}`;
+    if(sezioniRes.capi) html += `<h2>Capi per tipo</h2>${tabellaCapi(d, true)}`;
+    if(sezioniRes.servizi) html += `<h2>Servizi</h2>${tabellaServizi(d, true)}`;
+    if(sezioniRes.sedi && sedeRes === "tutte") html += `<h2>Confronto sedi</h2>${tabellaSedi(d, true)}`;
+    if(sezioniRes.pagamenti) html += `<h2>Pagamenti e stato</h2>${tabellaPagamenti(d, true)}`;
+    html += `<p class="doc-nota">Ordini per data di consegna (gli ordini del fine settimana contano dal venerdì). Importi per tipo di capo e per servizio ripartiti dall'importo di ciascun ordine. Stampato il ${dataLunga(oggi())}.</p>`;
+
+    const nomeFile = "Resoconto_" + (periodoRes === "mese" ? periodo.inizio.slice(0,7) : "settimana-" + numeroSettimana(daISO(periodo.inizio)) + "_" + periodo.inizio.slice(0,4))
+        + (sedeRes === "tutte" ? "" : "_" + SEDI[sedeRes]) + ".pdf";
+    mostraDocumento("Resoconto · " + periodo.titolo, html, nomeFile);
+}
+$("#resStampa").addEventListener("click", apriStampaResoconto);
 
 /* ---------- Avvio ---------- */
 
