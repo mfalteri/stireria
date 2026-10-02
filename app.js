@@ -1829,7 +1829,6 @@ const NOMI_SERVIZI = { stirare:"Stiratura", lavare:"Lavaggio e stiratura", solo:
 /* Sezioni che si possono accendere o spegnere (la scelta resta salvata nel browser). */
 const SEZIONI_RESOCONTO = [
     { k:"riepilogo", nome:"Riepilogo" },
-    { k:"andamento", nome:"Andamento giornaliero" },
     { k:"capi",      nome:"Capi per tipo e servizio" },
     { k:"servizi",   nome:"Servizi" },
     { k:"sedi",      nome:"Confronto sedi" },
@@ -1840,7 +1839,6 @@ const CHIAVE_SEZIONI = "frequenze-stireria-resoconti";
 let periodoRes = "settimana";          // "settimana" | "mese"
 let riferimentoRes = oggi();            // un giorno qualsiasi del periodo mostrato
 let sedeRes = "tutte";
-let misuraAndamento = "incasso";       // "incasso" | "capi" | "ordini"
 let sezioniRes = Object.fromEntries(SEZIONI_RESOCONTO.map(s => [s.k, true]));
 try{ Object.assign(sezioniRes, JSON.parse(localStorage.getItem(CHIAVE_SEZIONI) || "{}")); }catch(e){}
 
@@ -1920,14 +1918,6 @@ function datiResoconto(periodo, sede){
     return r;
 }
 
-/* Giorni del grafico: solo i lavorativi (gli ordini del fine settimana contano dal venerdì). */
-function giorniPeriodo(periodo){
-    const giorni = [];
-    for(let d = daISO(periodo.inizio); dataISO(d) <= periodo.fine; d = sposta(d, 1))
-        if(lavorativo(d)) giorni.push(dataISO(d));
-    return giorni;
-}
-
 /* Variazione rispetto al periodo precedente, in testo (niente colori: non è uno stato). */
 function variazione(attuale, precedente, nome){
     if(!precedente && !attuale) return "come " + nome;
@@ -1936,59 +1926,6 @@ function variazione(attuale, precedente, nome){
     if(p === 0) return "come " + nome;
     return (p > 0 ? "▲ +" : "▼ ") + p + "% rispetto " + nome.replace(/^il /, "al ").replace(/^la /, "alla ");
 }
-
-const valoreMisura = (g, misura) => !g ? 0 : misura === "incasso" ? g.importo : misura === "capi" ? g.capi : g.ordini;
-const testoMisura = (v, misura) => misura === "incasso" ? chf(v) : intero(v) + (misura === "capi" ? " capi" : v === 1 ? " ordine" : " ordini");
-
-/*
-Grafico a colonne (una sola serie, quindi senza legenda). In stampa: grigio,
-nessuna interazione. A schermo: tooltip al passaggio del mouse o al tocco.
-*/
-function svgAndamento(dati, giorni, misura, stampa){
-    const L = 720, A = 220, sx = 56, dx = 8, su = 12, giu = 30;
-    const valori = giorni.map(iso => valoreMisura(dati.perGiorno[iso], misura));
-    const massimo = Math.max(...valori, 0);
-    /* Scala "tonda" con 4 righe guida */
-    const passo = (() => {
-        if(!massimo) return 1;
-        const grezzo = massimo / 4, mag = 10 ** Math.floor(Math.log10(grezzo));
-        return [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= grezzo);
-    })();
-    const tetto = passo * 4;
-    const largo = (L - sx - dx) / giorni.length;
-    const barra = Math.max(4, Math.min(28, largo - 6));
-    const y = v => su + (A - su - giu) * (1 - v / tetto);
-    const colore = stampa ? "#6b6b6b" : "var(--accent)";
-    const testo = stampa ? "#555" : "var(--ink-3)";
-    const riga = stampa ? "#ddd" : "var(--line)";
-    const ogni = giorni.length > 12 ? Math.ceil(giorni.length / 12) : 1;
-
-    const guide = [0,1,2,3,4].map(i => {
-        const v = passo * i, yy = y(v);
-        return `<line x1="${sx}" x2="${L - dx}" y1="${yy}" y2="${yy}" stroke="${riga}" stroke-width="1"/>
-            <text x="${sx - 8}" y="${yy + 4}" text-anchor="end" font-size="11" fill="${testo}">${intero(v)}</text>`;
-    }).join("");
-
-    const colonne = giorni.map((iso, i) => {
-        const v = valori[i], d = daISO(iso);
-        const cx = sx + largo * i + largo / 2;
-        const h = Math.max(0, y(0) - y(v));
-        const r = Math.min(4, barra / 2, h);
-        const x0 = cx - barra / 2, y0 = y(v);
-        /* Solo gli angoli in alto arrotondati: la colonna parte dalla linea di base */
-        const forma = h > 0 ? `<path d="M${x0},${y(0)} V${y0 + r} Q${x0},${y0} ${x0 + r},${y0} H${x0 + barra - r} Q${x0 + barra},${y0} ${x0 + barra},${y0 + r} V${y(0)} Z" fill="${colore}"/>` : "";
-        const etichetta = i % ogni === 0
-            ? `<text x="${cx}" y="${A - 10}" text-anchor="middle" font-size="11" fill="${testo}">${giorni.length > 7 ? d.getDate() : GIORNI_BREVI[d.getDay()] + " " + d.getDate()}</text>` : "";
-        const area = stampa ? "" : `<rect class="res-zona" x="${sx + largo * i}" y="${su}" width="${largo}" height="${A - su - giu}" fill="transparent"
-            data-testo="${esc(dataLunga(d) + ": " + testoMisura(v, misura))}"/>`;
-        return forma + etichetta + area;
-    }).join("");
-
-    return `<svg viewBox="0 0 ${L} ${A}" width="100%" role="img" aria-label="Andamento giornaliero: ${misura}" style="display:block;max-width:100%;height:auto;font-family:inherit">
-        ${guide}<line x1="${sx}" x2="${L - dx}" y1="${y(0)}" y2="${y(0)}" stroke="${testo}" stroke-width="1"/>${colonne}</svg>`;
-}
-
-/* ----- Tabelle condivise tra schermo e stampa ----- */
 
 /*
 Capi per tipo e servizio: per ogni capo quanti pezzi sono stati stirati, lavati e
@@ -2069,14 +2006,12 @@ function disegnaResoconti(){
     const prec = periodo.precedente();
     const d = datiResoconto(periodo, sedeRes);
     const p = datiResoconto(prec, sedeRes);
-    const giorni = giorniPeriodo(periodo);
 
     $("#resAmbito").textContent = (sedeRes === "tutte" ? "Tutte le sedi" : "Sede " + SEDI[sedeRes]) + " · " + periodo.intervallo;
     $("#resTitolo").textContent = periodo.titolo;
     $("#resOggi").textContent = periodoRes === "mese" ? "Questo mese" : "Questa settimana";
     $$("#resTipo button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.periodo === periodoRes)));
     $$("#resSede button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sede === sedeRes)));
-    $$("#resMisura button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.misura === misuraAndamento)));
     $$("#resSezioni input").forEach(i => i.checked = !!sezioniRes[i.dataset.sezione]);
     /* Il confronto tra sedi ha senso solo con tutte le sedi */
     const sedi = sezioniRes.sedi && sedeRes === "tutte";
@@ -2090,19 +2025,6 @@ function disegnaResoconti(){
             <div class="kpi-voce"><span>Capi</span><strong>${intero(d.capi)}</strong><small>${variazione(d.capi, p.capi, np)}</small></div>
             <div class="kpi-voce"><span>Ordini</span><strong>${intero(d.ordini)}</strong><small>${variazione(d.ordini, p.ordini, np)}</small></div>
             <div class="kpi-voce"><span>Importo medio per ordine</span><strong>${chf(d.medio)}</strong><small>${d.ordini ? (d.capi / d.ordini).toFixed(1).replace(".", ",") + " capi in media" : "nessun ordine"}</small></div>
-        </div>`);
-    if(sezioniRes.andamento) blocchi.push(`
-        <div class="pannello res-blocco">
-            <div class="res-testa">
-                <h3>Andamento giornaliero</h3>
-                <div class="segmenti" id="resMisura" role="group" aria-label="Valore del grafico">
-                    <button type="button" data-misura="incasso" aria-pressed="${misuraAndamento === "incasso"}">Importo (CHF)</button>
-                    <button type="button" data-misura="capi" aria-pressed="${misuraAndamento === "capi"}">Capi</button>
-                    <button type="button" data-misura="ordini" aria-pressed="${misuraAndamento === "ordini"}">Ordini</button>
-                </div>
-            </div>
-            <div class="res-grafico">${svgAndamento(d, giorni, misuraAndamento, false)}<div class="res-tooltip" hidden></div></div>
-            <p class="res-nota">Per giorno di consegna dell'ordine. Gli ordini del sabato e della domenica contano dal venerdì.</p>
         </div>`);
     if(sezioniRes.capi) blocchi.push(`
         <div class="pannello res-blocco"><div class="res-testa"><h3>Capi per tipo e servizio</h3></div><div class="res-scorri">${tabellaCapi(d, false)}</div></div>`);
@@ -2118,28 +2040,6 @@ function disegnaResoconti(){
         : `<p class="vuoto res-vuoto">Tutte le sezioni sono spente: attivane almeno una qui sopra.</p>`;
     $("#resStampa").disabled = !blocchi.length;
 }
-
-/* Tooltip del grafico: al passaggio del mouse o al tocco su una colonna */
-$("#resContenuto").addEventListener("pointermove", e => {
-    const zona = e.target.closest(".res-zona");
-    const box = e.target.closest(".res-grafico");
-    const tip = box && box.querySelector(".res-tooltip");
-    $$(".res-zona.attiva").forEach(z => z !== zona && z.classList.remove("attiva"));
-    if(!tip) return;
-    if(!zona){ tip.hidden = true; return; }
-    zona.classList.add("attiva");
-    const r = box.getBoundingClientRect();
-    tip.textContent = zona.dataset.testo;
-    tip.hidden = false;
-    const x = Math.min(Math.max(e.clientX - r.left, 80), r.width - 80);
-    tip.style.left = x + "px";
-    tip.style.top = Math.max(0, e.clientY - r.top - 44) + "px";
-});
-$("#resContenuto").addEventListener("pointerleave", () => $$(".res-tooltip").forEach(t => t.hidden = true));
-$("#resContenuto").addEventListener("click", e => {
-    const b = e.target.closest("[data-misura]");
-    if(b){ misuraAndamento = b.dataset.misura; disegnaResoconti(); }
-});
 
 $$("#resTipo button").forEach(b => b.addEventListener("click", () => { periodoRes = b.dataset.periodo; disegnaResoconti(); }));
 $$("#resSede button").forEach(b => b.addEventListener("click", () => { sedeRes = b.dataset.sede; disegnaResoconti(); }));
@@ -2174,7 +2074,6 @@ function apriStampaResoconto(){
     const p = datiResoconto(prec, sedeRes);
     const ambito = sedeRes === "tutte" ? "Tutte le sedi" : "Sede " + SEDI[sedeRes];
     const np = periodo.nomePrecedente;
-    const nomiMisura = { incasso:"importo (CHF)", capi:"capi", ordini:"ordini" };
 
     let html = testaDocumento("Resoconto", (periodoRes === "mese" ? MESI[daISO(periodo.inizio).getMonth()] : "Sett. " + numeroSettimana(daISO(periodo.inizio))) + " " + periodo.inizio.slice(0,4),
         "Stireria · resoconto " + (periodoRes === "mese" ? "mensile" : "settimanale")) + `
@@ -2189,9 +2088,6 @@ function apriStampaResoconto(){
             <dt>Ordini</dt><dd>${intero(d.ordini)} <span class="piccolo">(${variazione(d.ordini, p.ordini, np)})</span></dd>
             <dt>Importo medio per ordine</dt><dd>${chf(d.medio)}</dd>
         </dl>`;
-    if(sezioniRes.andamento) html += `
-        <h2>Andamento giornaliero · ${nomiMisura[misuraAndamento]}</h2>
-        ${svgAndamento(d, giorniPeriodo(periodo), misuraAndamento, true)}`;
     if(sezioniRes.capi) html += `<h2>Capi per tipo e servizio</h2>${tabellaCapi(d, true)}`;
     if(sezioniRes.servizi) html += `<h2>Servizi</h2>${tabellaServizi(d, true)}`;
     if(sezioniRes.sedi && sedeRes === "tutte") html += `<h2>Confronto sedi</h2>${tabellaSedi(d, true)}`;
