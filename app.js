@@ -125,6 +125,10 @@ function daRiga(r){
     const c = new Date(r.creato);
     return {
         ...r,
+        /* Dopo 90 giorni nome, cognome e telefono vengono cancellati dal database */
+        nome: r.nome ?? "Dati rimossi",
+        cognome: r.cognome ?? "",
+        telefono: r.telefono ?? "",
         id: Number(r.id),
         importo: Number(r.importo) || 0,
         creato: dataISO(c) + "T" + pad(c.getHours()) + ":" + pad(c.getMinutes())
@@ -1327,6 +1331,7 @@ function mostraDocumento(titolo, html, nomeFile, tipo = "a4", ordine = null){
 /* 41791234567 → +41 79 123 45 67 (gli altri numeri restano con il solo "+") */
 function telefonoLeggibile(n){
     n = normalizzaTelefono(n);
+    if(!n) return "—";
     return /^41\d{9}$/.test(n)
         ? "+41 " + n.slice(2,4) + " " + n.slice(4,7) + " " + n.slice(7,9) + " " + n.slice(9)
         : "+" + n;
@@ -1459,7 +1464,8 @@ function htmlRicevuta(o){
             <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
         </div>
         <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>
-        <p class="doc-privacy"><b>Protezione dei dati.</b> Raccogliamo nome, cognome e numero di telefono esclusivamente per la gestione degli ordini e dei rapporti con la clientela. I dati sono accessibili solo al personale autorizzato e non vengono comunicati a terzi salvo necessità legate all'esecuzione dell'ordine.</p>`;
+        <p class="doc-privacy"><b>Capi non ritirati.</b> I capi non ritirati entro 90 giorni dalla consegna verranno dati in beneficenza.</p>
+        <p class="doc-privacy"><b>Protezione dei dati.</b> Raccogliamo nome, cognome e numero di telefono esclusivamente per la gestione degli ordini e dei rapporti con la clientela. I dati sono accessibili solo al personale autorizzato e non vengono comunicati a terzi salvo necessità legate all'esecuzione dell'ordine. Nome, cognome e numero di telefono vengono cancellati 90 giorni dopo la registrazione dell'ordine.</p>`;
 }
 
 /*

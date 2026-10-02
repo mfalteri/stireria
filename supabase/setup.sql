@@ -545,3 +545,65 @@ grant execute on function public.carico_giornaliero() to authenticated;
 alter table public.ordini
     add column if not exists osservazioni text
     check (osservazioni is null or char_length(osservazioni) <= 120);
+
+-- =====================================================================
+-- Nome, cognome e telefono cancellati 90 giorni dopo la registrazione
+-- (job pg_cron giornaliero). Il resto dell'ordine resta.
+-- All'inserimento i dati del cliente restano obbligatori (prepara_ordine).
+-- =====================================================================
+alter table public.ordini add column if not exists dati_rimossi_il timestamptz;
+alter table public.ordini alter column nome     drop not null;
+alter table public.ordini alter column cognome  drop not null;
+alter table public.ordini alter column telefono drop not null;
+alter table public.ordini drop constraint if exists dati_cliente_presenti;
+alter table public.ordini add constraint dati_cliente_presenti check (
+    dati_rimossi_il is not null or (nome is not null and cognome is not null and telefono is not null)
+);
+
+create or replace function public.prepara_ordine()
+returns trigger language plpgsql set search_path = public
+as $$
+begin
+    if new.nome is null or new.cognome is null or new.telefono is null then
+        raise exception 'Nome, cognome e telefono sono obbligatori';
+    end if;
+    new.dati_rimossi_il := null;
+
+    new.telefono := public.normalizza_telefono(new.telefono);
+    if new.telefono like '410%' then
+        new.telefono := '41' || substr(new.telefono, 4);
+    end if;
+
+    -- "solo lavare" esclude "lavare e stirare"; un capo si lava solo se c'è
+    new.solo_lavare_ceste       := new.solo_lavare_ceste       and new.ceste > 0;
+    new.solo_lavare_mezze_ceste := new.solo_lavare_mezze_ceste and new.mezze_ceste > 0;
+    new.lavare_camicie     := new.lavare_camicie     and new.camicie > 0;
+    new.lavare_lenzuola    := new.lavare_lenzuola    and new.lenzuola > 0;
+    new.lavare_completi    := new.lavare_completi    and new.completi > 0;
+    new.lavare_mezze_ceste := new.lavare_mezze_ceste and new.mezze_ceste > 0 and not new.solo_lavare_mezze_ceste;
+    new.lavare_ceste       := new.lavare_ceste       and new.ceste > 0       and not new.solo_lavare_ceste;
+    new.lavare := new.lavare_camicie or new.lavare_lenzuola or new.lavare_completi
+               or new.lavare_mezze_ceste or new.lavare_ceste
+               or new.solo_lavare_mezze_ceste or new.solo_lavare_ceste;
+
+    new.importo := public.calcola_importo_ordine(new);
+    return new;
+end $$;
+
+create or replace function public.rimuovi_dati_clienti()
+returns integer language plpgsql security definer set search_path = public
+as $$
+declare n integer;
+begin
+    update public.ordini
+       set nome = null, cognome = null, telefono = null, dati_rimossi_il = now()
+     where dati_rimossi_il is null
+       and creato < now() - interval '90 days';
+    get diagnostics n = row_count;
+    return n;
+end $$;
+revoke all on function public.rimuovi_dati_clienti() from public, anon, authenticated;
+
+create extension if not exists pg_cron;
+select cron.unschedule(jobid) from cron.job where jobname = 'rimuovi-dati-clienti';
+select cron.schedule('rimuovi-dati-clienti', '15 2 * * *', 'select public.rimuovi_dati_clienti()');
