@@ -1464,8 +1464,8 @@ function htmlRicevuta(o){
             <span>${ORA_RITIRO} · presso ${SEDI[o.sede]}</span>
         </div>
         <p class="doc-nota">Presenti questa ricevuta al momento del ritiro. Per informazioni si rivolga alla sede ${SEDI[o.sede]}.</p>
-        <p class="doc-privacy"><b>Capi non ritirati.</b> I capi non ritirati entro 90 giorni dalla consegna verranno dati in beneficenza.</p>
-        <p class="doc-privacy"><b>Protezione dei dati.</b> Raccogliamo nome, cognome e numero di telefono esclusivamente per la gestione degli ordini e dei rapporti con la clientela. I dati sono accessibili solo al personale autorizzato e non vengono comunicati a terzi salvo necessità legate all'esecuzione dell'ordine. Nome, cognome e numero di telefono vengono cancellati 90 giorni dopo la registrazione dell'ordine.</p>`;
+        <p class="doc-privacy"><b>Capi non ritirati.</b> I capi non ritirati verranno dati in beneficenza dopo 90 giorni dalla data di ritiro.</p>
+        <p class="doc-privacy"><b>Protezione dei dati.</b> Raccogliamo nome, cognome e numero di telefono esclusivamente per la gestione degli ordini e dei rapporti con la clientela. I dati sono accessibili solo al personale autorizzato e non vengono comunicati a terzi salvo necessità legate all'esecuzione dell'ordine. I dati personali vengono cancellati 90 giorni dopo la registrazione dell'ordine.</p>`;
 }
 
 /*
