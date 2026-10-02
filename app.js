@@ -2022,9 +2022,11 @@ function disegnaResoconti(){
         <div class="kpi res-kpi">
             <div class="kpi-voce"><span>Importo ordini</span><strong>${chf(d.importo)}</strong><small>${variazione(d.importo, p.importo, np)}</small></div>
             <div class="kpi-voce"><span>Incassato</span><strong>${chf(d.incassato)}</strong><small>${chf(d.importo - d.incassato)} ancora da incassare</small></div>
-            <div class="kpi-voce"><span>Capi</span><strong>${intero(d.capi)}</strong><small>${variazione(d.capi, p.capi, np)}</small></div>
             <div class="kpi-voce"><span>Ordini</span><strong>${intero(d.ordini)}</strong><small>${variazione(d.ordini, p.ordini, np)}</small></div>
             <div class="kpi-voce"><span>Importo medio per ordine</span><strong>${chf(d.medio)}</strong><small>${d.ordini ? (d.capi / d.ordini).toFixed(1).replace(".", ",") + " capi in media" : "nessun ordine"}</small></div>
+        </div>
+        <div class="kpi res-kpi res-kpi-capi">
+            ${CAPI.map(c => `<div class="kpi-voce"><span>${c.nome}</span><strong>${intero(d.perCapo[c.k].capi)}</strong><small>${chf(d.perCapo[c.k].importo)}<br>${variazione(d.perCapo[c.k].capi, p.perCapo[c.k].capi, np)}</small></div>`).join("")}
         </div>`);
     if(sezioniRes.capi) blocchi.push(`
         <div class="pannello res-blocco"><div class="res-testa"><h3>Capi per tipo e servizio</h3></div><div class="res-scorri">${tabellaCapi(d, false)}</div></div>`);
@@ -2084,7 +2086,8 @@ function apriStampaResoconto(){
         <dl class="doc-kv">
             <dt>Importo ordini</dt><dd>${chf(d.importo)} <span class="piccolo">(${variazione(d.importo, p.importo, np)})</span></dd>
             <dt>Incassato</dt><dd>${chf(d.incassato)} · da incassare ${chf(d.importo - d.incassato)}</dd>
-            <dt>Capi</dt><dd>${intero(d.capi)} <span class="piccolo">(${variazione(d.capi, p.capi, np)})</span></dd>
+${CAPI.map(c => `
+            <dt>${c.nome}</dt><dd>${intero(d.perCapo[c.k].capi)} · ${chf(d.perCapo[c.k].importo)} <span class="piccolo">(${variazione(d.perCapo[c.k].capi, p.perCapo[c.k].capi, np)})</span></dd>`).join("")}
             <dt>Ordini</dt><dd>${intero(d.ordini)} <span class="piccolo">(${variazione(d.ordini, p.ordini, np)})</span></dd>
             <dt>Importo medio per ordine</dt><dd>${chf(d.medio)}</dd>
         </dl>`;
