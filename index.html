@@ -264,9 +264,14 @@ button,input,select{font:inherit;color:inherit;}
 .res-tab th, .res-tab td{white-space:nowrap;}
 .res-tab .n{text-align:right;font-variant-numeric:tabular-nums;}
 .res-tab tfoot td{font-weight:700;border-top:1px solid var(--line-2);}
-.res-col-quota{width:22%;min-width:90px;}
-.res-quota{display:block;height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;}
-.res-quota i{display:block;height:100%;border-radius:99px;background:var(--accent);}
+/* Capi per tipo e servizio: righe del capo, subtotali e totali per servizio */
+.res-capi td, .res-doc-capi td{border-bottom:0;}
+.res-capi tr.res-primo td, .res-doc-capi tr.res-primo td{border-top:1px solid var(--line);}
+.res-doc-capi tr.res-primo td{border-top-color:#d6d6d6;}
+.res-capi tbody tr:first-child td, .res-doc-capi tbody tr:first-child td{border-top:0;}
+.res-subtotale td{font-weight:700;}
+.res-totali tr:first-child td{border-top:1px solid var(--line-2);}
+.res-doc-capi .res-totali tr:first-child td{border-top:1.5px solid #141414;}
 .res-vuoto{margin-bottom:18px;}
 
 /* ---------- Login ---------- */

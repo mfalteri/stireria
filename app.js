@@ -1830,7 +1830,7 @@ const NOMI_SERVIZI = { stirare:"Stiratura", lavare:"Lavaggio e stiratura", solo:
 const SEZIONI_RESOCONTO = [
     { k:"riepilogo", nome:"Riepilogo" },
     { k:"andamento", nome:"Andamento giornaliero" },
-    { k:"capi",      nome:"Capi per tipo" },
+    { k:"capi",      nome:"Capi per tipo e servizio" },
     { k:"servizi",   nome:"Servizi" },
     { k:"sedi",      nome:"Confronto sedi" },
     { k:"pagamenti", nome:"Pagamenti e stato" }
@@ -1882,7 +1882,7 @@ function datiResoconto(periodo, sede){
     const vuoto = () => ({ ordini:0, capi:0, importo:0, incassato:0 });
     const r = {
         ...vuoto(),
-        perCapo: Object.fromEntries(CAPI.map(c => [c.k, { capi:0, importo:0, stirare:0, lavare:0, solo:0 }])),
+        perCapo: Object.fromEntries(CAPI.map(c => [c.k, { capi:0, importo:0, stirare:0, lavare:0, solo:0, importi:{ stirare:0, lavare:0, solo:0 } }])),
         perServizio: { stirare:{ capi:0, importo:0 }, lavare:{ capi:0, importo:0 }, solo:{ capi:0, importo:0 } },
         perSede: { emporio:vuoto(), piazzetta:vuoto() },
         perGiorno: {},
@@ -1911,7 +1911,7 @@ function datiResoconto(periodo, sede){
             const servizio = chiaveServizio(servizioDi(o, c));
             const importo = n * prezzoUnitario(c, servizioDi(o, c)) * fattore;
             const pc = r.perCapo[c.k];
-            pc.capi += n; pc.importo += importo; pc[servizio] += n;
+            pc.capi += n; pc.importo += importo; pc[servizio] += n; pc.importi[servizio] += importo;
             r.perServizio[servizio].capi += n;
             r.perServizio[servizio].importo += importo;
         }
@@ -1988,45 +1988,49 @@ function svgAndamento(dati, giorni, misura, stampa){
         ${guide}<line x1="${sx}" x2="${L - dx}" y1="${y(0)}" y2="${y(0)}" stroke="${testo}" stroke-width="1"/>${colonne}</svg>`;
 }
 
-/* Barra orizzontale di proporzione (una sola tinta), dentro le tabelle. */
-const barraQuota = (v, max, stampa) =>
-    `<span class="res-quota${stampa ? " stampa" : ""}"><i style="width:${max ? Math.max(v ? 2 : 0, v / max * 100) : 0}%"></i></span>`;
-
 /* ----- Tabelle condivise tra schermo e stampa ----- */
 
+/*
+Capi per tipo e servizio: per ogni capo quanti pezzi sono stati stirati, lavati e
+stirati o solo lavati, con l'importo di ciascuno; poi i totali per servizio e il totale.
+*/
 function tabellaCapi(d, stampa){
-    const max = Math.max(...CAPI.map(c => d.perCapo[c.k].capi), 0);
+    const presenti = CAPI.filter(c => d.perCapo[c.k].capi > 0);
+    if(!presenti.length) return `<p class="${stampa ? "sottotitolo" : "res-nota"}">Nessun capo in questo periodo.</p>`;
+    const righe = presenti.map(c => {
+        const p = d.perCapo[c.k];
+        const servizi = Object.keys(NOMI_SERVIZI).filter(s => p[s] > 0);
+        return servizi.map((s, i) => `
+                <tr${i === 0 ? ` class="res-primo"` : ""}>
+                    <td>${i === 0 ? `<strong>${c.nome}</strong>` : ""}</td>
+                    <td>${NOMI_SERVIZI[s]}</td>
+                    <td class="n">${p[s]}</td>
+                    <td class="n">${chf(p.importi[s])}</td>
+                </tr>`).join("") + (servizi.length > 1 ? `
+                <tr class="res-subtotale">
+                    <td></td><td>Totale ${c.nome.toLowerCase()}</td>
+                    <td class="n">${p.capi}</td><td class="n">${chf(p.importo)}</td>
+                </tr>` : "");
+    }).join("");
+    const perServizio = Object.entries(NOMI_SERVIZI).filter(([s]) => d.perServizio[s].capi > 0).map(([s, nome]) => `
+                <tr class="res-subtotale"><td></td><td>Totale ${nome.toLowerCase()}</td><td class="n">${d.perServizio[s].capi}</td><td class="n">${chf(d.perServizio[s].importo)}</td></tr>`).join("");
     return `
-        <table class="${stampa ? "doc-tab" : "tabella res-tab"}">
-            <thead><tr><th>Capo</th><th class="n">Stiratura</th><th class="n">Lavaggio e stiratura</th><th class="n">Solo lavaggio</th><th class="n">Totale capi</th>${stampa ? "" : "<th></th>"}<th class="n">Importo</th></tr></thead>
-            <tbody>${CAPI.map(c => {
-                const p = d.perCapo[c.k];
-                return `<tr>
-                    <td>${c.nome}</td>
-                    <td class="n">${p.stirare || "–"}</td>
-                    <td class="n">${p.lavare || "–"}</td>
-                    <td class="n">${c.soloLavare ? (p.solo || "–") : ""}</td>
-                    <td class="n"><strong>${p.capi}</strong></td>
-                    ${stampa ? "" : `<td class="res-col-quota">${barraQuota(p.capi, max)}</td>`}
-                    <td class="n">${chf(p.importo)}</td>
-                </tr>`;
-            }).join("")}</tbody>
-            <tfoot><tr><td>Totale</td>
-                <td class="n">${d.perServizio.stirare.capi}</td><td class="n">${d.perServizio.lavare.capi}</td><td class="n">${d.perServizio.solo.capi}</td>
-                <td class="n">${d.capi}</td>${stampa ? "" : "<td></td>"}<td class="n">${chf(d.importo)}</td></tr></tfoot>
+        <table class="${stampa ? "doc-tab res-doc-capi" : "tabella res-tab res-capi"}">
+            <thead><tr><th>Capo</th><th>Servizio</th><th class="n">Quantità</th><th class="n">Importo</th></tr></thead>
+            <tbody>${righe}</tbody>
+            <tbody class="res-totali">${perServizio}</tbody>
+            <tfoot><tr><td>Totale</td><td></td><td class="n">${d.capi}</td><td class="n">${chf(d.importo)}</td></tr></tfoot>
         </table>`;
 }
 
 function tabellaServizi(d, stampa){
-    const max = Math.max(...Object.values(d.perServizio).map(s => s.importo), 0);
     return `
         <table class="${stampa ? "doc-tab" : "tabella res-tab"}">
-            <thead><tr><th>Servizio</th><th class="n">Capi</th><th class="n">Quota capi</th><th class="n">Importo</th><th class="n">Quota importo</th>${stampa ? "" : "<th></th>"}</tr></thead>
+            <thead><tr><th>Servizio</th><th class="n">Capi</th><th class="n">Quota capi</th><th class="n">Importo</th><th class="n">Quota importo</th></tr></thead>
             <tbody>${Object.entries(NOMI_SERVIZI).map(([k, nome]) => {
                 const s = d.perServizio[k];
                 return `<tr><td>${nome}</td><td class="n">${s.capi}</td><td class="n">${percento(s.capi, d.capi)}</td>
-                    <td class="n">${chf(s.importo)}</td><td class="n">${percento(s.importo, d.importo)}</td>
-                    ${stampa ? "" : `<td class="res-col-quota">${barraQuota(s.importo, max)}</td>`}</tr>`;
+                    <td class="n">${chf(s.importo)}</td><td class="n">${percento(s.importo, d.importo)}</td></tr>`;
             }).join("")}</tbody>
         </table>`;
 }
@@ -2101,7 +2105,7 @@ function disegnaResoconti(){
             <p class="res-nota">Per giorno di consegna dell'ordine. Gli ordini del sabato e della domenica contano dal venerdì.</p>
         </div>`);
     if(sezioniRes.capi) blocchi.push(`
-        <div class="pannello res-blocco"><div class="res-testa"><h3>Capi per tipo</h3></div><div class="res-scorri">${tabellaCapi(d, false)}</div></div>`);
+        <div class="pannello res-blocco"><div class="res-testa"><h3>Capi per tipo e servizio</h3></div><div class="res-scorri">${tabellaCapi(d, false)}</div></div>`);
     if(sezioniRes.servizi) blocchi.push(`
         <div class="pannello res-blocco"><div class="res-testa"><h3>Servizi</h3></div><div class="res-scorri">${tabellaServizi(d, false)}</div></div>`);
     if(sedi) blocchi.push(`
@@ -2188,7 +2192,7 @@ function apriStampaResoconto(){
     if(sezioniRes.andamento) html += `
         <h2>Andamento giornaliero · ${nomiMisura[misuraAndamento]}</h2>
         ${svgAndamento(d, giorniPeriodo(periodo), misuraAndamento, true)}`;
-    if(sezioniRes.capi) html += `<h2>Capi per tipo</h2>${tabellaCapi(d, true)}`;
+    if(sezioniRes.capi) html += `<h2>Capi per tipo e servizio</h2>${tabellaCapi(d, true)}`;
     if(sezioniRes.servizi) html += `<h2>Servizi</h2>${tabellaServizi(d, true)}`;
     if(sezioniRes.sedi && sedeRes === "tutte") html += `<h2>Confronto sedi</h2>${tabellaSedi(d, true)}`;
     if(sezioniRes.pagamenti) html += `<h2>Pagamenti e stato</h2>${tabellaPagamenti(d, true)}`;
