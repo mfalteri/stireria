@@ -846,6 +846,13 @@ button,input,select{font:inherit;color:inherit;}
 .stato::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;}
 .stato-lavorazione{background:var(--accent-soft);color:var(--accent-text);}
 .stato-pronto{background:var(--ok-soft);color:var(--ok);}
+/* Ordine in sospeso: riga in grigio (i pulsanti restano leggibili) */
+.stato-sospeso{background:var(--surface-2);color:var(--ink-3);border:1px dashed var(--line-2);}
+.tabella tr.riga-sospesa td{background:var(--surface-2);}
+.tabella tr.riga-sospesa td:not(.azioni-cella){color:var(--ink-3);}
+.tabella tr.riga-sospesa td:not(.azioni-cella) > *{opacity:.55;filter:grayscale(1);}
+.tabella tr.riga-sospesa td:nth-last-child(2) > *{opacity:1;filter:none;}
+.tabella-wrap .tabella tr.riga-sospesa td.azioni-cella{background:var(--surface-2);}
 .stato-ritirato{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line);}
 .azioni-riga{display:flex;gap:6px;justify-content:flex-end;flex-wrap:nowrap;}
 /* Pulsanti dell'ordine sempre visibili a destra, anche quando la tabella scorre di lato */
@@ -1438,6 +1445,7 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
                         <button class="filtro" data-stato="lavorazione" aria-pressed="false">In lavorazione</button>
                         <button class="filtro" data-stato="pronto" aria-pressed="false">Pronti</button>
                         <button class="filtro" data-stato="ritirato" aria-pressed="false">Ritirati</button>
+                        <button class="filtro" data-stato="sospesi" aria-pressed="false">In sospeso</button>
                     </div>
                 </div>
             </div>

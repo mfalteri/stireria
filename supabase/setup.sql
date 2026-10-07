@@ -607,3 +607,93 @@ revoke all on function public.rimuovi_dati_clienti() from public, anon, authenti
 create extension if not exists pg_cron;
 select cron.unschedule(jobid) from cron.job where jobname = 'rimuovi-dati-clienti';
 select cron.schedule('rimuovi-dati-clienti', '15 2 * * *', 'select public.rimuovi_dati_clienti()');
+
+-- =====================================================================
+-- Ordini in sospeso: solo l'amministratore li sospende o li riattiva.
+-- Un ordine sospeso non pesa sulla stireria (carico, date di ritiro)
+-- e non cambia stato o pagamento finché non viene riattivato.
+-- =====================================================================
+alter table public.ordini add column if not exists sospeso boolean not null default false;
+grant update (stato, pagato, sospeso) on public.ordini to authenticated;
+
+create or replace function public.controlla_cambio_stato()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+    if public.mio_ruolo() is not null then
+        if new.sospeso is distinct from old.sospeso and public.mio_ruolo() <> 'admin' then
+            raise exception 'Solo l''amministratore può sospendere o riattivare un ordine';
+        end if;
+        if old.sospeso and new.sospeso and (new.stato is distinct from old.stato or new.pagato is distinct from old.pagato) then
+            raise exception 'L''ordine è in sospeso: riattivalo prima di cambiarne stato o pagamento';
+        end if;
+    end if;
+    if public.mio_ruolo() = 'sede' then
+        if new.stato is distinct from old.stato and not (
+            (old.stato = 'lavorazione' and new.stato = 'pronto') or
+            (old.stato = 'pronto'      and new.stato = 'ritirato')
+        ) then
+            raise exception 'Passaggio di stato non consentito: % → %', old.stato, new.stato;
+        end if;
+        if old.pagato and not new.pagato then
+            raise exception 'Un pagamento registrato può essere annullato solo dall''amministratore';
+        end if;
+    end if;
+    return new;
+end $$;
+
+create or replace function public.prepara_ordine()
+returns trigger language plpgsql set search_path = public
+as $$
+begin
+    if new.nome is null or new.cognome is null or new.telefono is null then
+        raise exception 'Nome, cognome e telefono sono obbligatori';
+    end if;
+    new.dati_rimossi_il := null;
+    new.sospeso := false;
+
+    new.telefono := public.normalizza_telefono(new.telefono);
+    if new.telefono like '410%' then
+        new.telefono := '41' || substr(new.telefono, 4);
+    end if;
+
+    -- "solo lavare" esclude "lavare e stirare"; un capo si lava solo se c'è
+    new.solo_lavare_ceste       := new.solo_lavare_ceste       and new.ceste > 0;
+    new.solo_lavare_mezze_ceste := new.solo_lavare_mezze_ceste and new.mezze_ceste > 0;
+    new.lavare_camicie     := new.lavare_camicie     and new.camicie > 0;
+    new.lavare_lenzuola    := new.lavare_lenzuola    and new.lenzuola > 0;
+    new.lavare_completi    := new.lavare_completi    and new.completi > 0;
+    new.lavare_mezze_ceste := new.lavare_mezze_ceste and new.mezze_ceste > 0 and not new.solo_lavare_mezze_ceste;
+    new.lavare_ceste       := new.lavare_ceste       and new.ceste > 0       and not new.solo_lavare_ceste;
+    new.lavare := new.lavare_camicie or new.lavare_lenzuola or new.lavare_completi
+               or new.lavare_mezze_ceste or new.lavare_ceste
+               or new.solo_lavare_mezze_ceste or new.solo_lavare_ceste;
+
+    new.importo := public.calcola_importo_ordine(new);
+    return new;
+end $$;
+
+-- Carico giornaliero: gli ordini sospesi non contano
+create or replace function public.carico_giornaliero()
+returns table (
+    data date,
+    camicie bigint, lenzuola bigint, ceste bigint, completi bigint, mezze_ceste bigint,
+    camicie_aperte bigint, lenzuola_aperte bigint, ceste_aperte bigint,
+    completi_aperte bigint, mezze_ceste_aperte bigint
+)
+language sql stable security definer set search_path = public
+as $$
+    select o.data,
+           sum(o.camicie), sum(o.lenzuola), sum(o.ceste), sum(o.completi), sum(o.mezze_ceste),
+           sum(o.camicie)  filter (where o.stato = 'lavorazione'),
+           sum(o.lenzuola) filter (where o.stato = 'lavorazione'),
+           sum(case when o.solo_lavare_ceste then 0 else o.ceste end) filter (where o.stato = 'lavorazione'),
+           sum(o.completi) filter (where o.stato = 'lavorazione'),
+           sum(case when o.solo_lavare_mezze_ceste then 0 else o.mezze_ceste end) filter (where o.stato = 'lavorazione')
+    from public.ordini o
+    where public.mio_ruolo() is not null and not o.sospeso
+    group by o.data
+    order by o.data
+$$;
+revoke all on function public.carico_giornaliero() from public, anon;
+grant execute on function public.carico_giornaliero() to authenticated;

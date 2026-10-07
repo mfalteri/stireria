@@ -224,6 +224,8 @@ async function ricarica(){
 
 const isAdmin = () => utente && utente.ruolo === "admin";
 const ordiniVisibili = () => isAdmin() ? db.ordini : db.ordini.filter(o => o.sede === utente.sede);
+/* Ordini in sospeso (decisi dall'amministratore): restano in elenco ma non contano altrove */
+const nonSospeso = o => !o.sospeso;
 
 /* ---------- Calcolo del carico ---------- */
 
@@ -285,7 +287,7 @@ Restituisce { "YYYY-MM-DD": [{ ordine, minuti, inizia, finisce }] }.
 */
 function programmaLavoro(){
     const ordini = db.ordini
-        .filter(o => o.stato === "lavorazione")
+        .filter(o => o.stato === "lavorazione" && !o.sospeso)   /* i sospesi non si lavorano */
         .sort((a,b) => a.data.localeCompare(b.data) || a.id - b.id);
     const programma = {};
     if(!ordini.length) return programma;
@@ -940,7 +942,7 @@ async function confermaEChiudi(){
 
 function aggiornaBadge(){
     if(!utente) return;
-    const attivi = ordiniVisibili().filter(o => o.stato !== "ritirato").length;
+    const attivi = ordiniVisibili().filter(o => o.stato !== "ritirato" && nonSospeso(o)).length;
     $("#badgeOrdini").textContent = attivi;
     $("#badgeOrdini").hidden = attivi === 0;
 }
@@ -959,28 +961,31 @@ function disegnaKpi(ordini){
 
 function disegnaOrdini(){
     const ordini = ordiniVisibili().filter(o => filtroSede === "tutte" || o.sede === filtroSede);
-    disegnaKpi(ordini);
+    disegnaKpi(ordini.filter(nonSospeso));
 
     const cerca = $("#cerca").value.trim().toLowerCase();
     const cifre = cerca.replace(/\D/g,"");
     const oggiI = oggiISO();
 
+    /* "Tutti" mostra anche i sospesi (in grigio); i filtri di stato solo gli ordini attivi */
     const elenco = ordini
-        .filter(o => filtroStato === "tutti" || o.stato === filtroStato)
+        .filter(o => filtroStato === "tutti" ||
+            (filtroStato === "sospesi" ? o.sospeso : nonSospeso(o) && o.stato === filtroStato))
         .filter(o => !cerca ||
             (o.nome + " " + o.cognome).toLowerCase().includes(cerca) ||
             (cifre && (o.telefono.includes(cifre) || o.id === Number(cifre))))
         .sort((a,b) => b.id - a.id);
 
     $("#righeOrdini").innerHTML = elenco.map(o => {
-        const inRitardo = o.stato === "lavorazione" && o.ritiro < oggiI;
-        /* Tutti possono segnare pronto e poi consegnato (le sedi solo i propri ordini). */
+        const inRitardo = !o.sospeso && o.stato === "lavorazione" && o.ritiro < oggiI;
+        /* Tutti possono segnare pronto e poi consegnato (le sedi solo i propri ordini); un ordine sospeso è fermo. */
         const avanti =
+            o.sospeso ? null :
             o.stato === "lavorazione" ? ["pronto","Segna pronto"] :
             o.stato === "pronto" ? ["ritirato","Consegnato al cliente"] :
             null;
         return `
-            <tr>
+            <tr${o.sospeso ? ` class="riga-sospesa"` : ""}>
                 <td class="num">#${numeroOrdine(o.id)}</td>
                 <td>${badgeSede(o.sede)}</td>
                 <td class="cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span>${esc(telefonoLeggibile(o.telefono))}</span></td>
@@ -988,12 +993,13 @@ function disegnaOrdini(){
                 <td class="importo-cella"><strong>${chf(o.importo)}</strong>${badgePagamento(o)}</td>
                 <td class="data-cella">${dataBreve(daISO(o.data))}<span class="sotto">ore ${o.creato.slice(11)}</span></td>
                 <td class="data-cella">${dataBreve(daISO(o.ritiro))}${inRitardo ? '<span class="ritardo">Oltre la data prevista</span>' : '<span class="sotto">dalle 14.00</span>'}</td>
-                <td><span class="stato stato-${o.stato}">${STATI[o.stato]}</span></td>
+                <td>${o.sospeso ? `<span class="stato stato-sospeso">In sospeso</span><span class="sotto">era: ${STATI[o.stato].toLowerCase()}</span>` : `<span class="stato stato-${o.stato}">${STATI[o.stato]}</span>`}</td>
                 <td class="azioni-cella">
                     <div class="azioni-riga">
                         ${avanti ? `<button class="btn btn-piccolo" data-avanza="${o.id}" data-stato="${avanti[0]}">${avanti[1]}</button>` : ""}
-                        ${o.stato === "ritirato" && !o.pagato ? `<button class="btn btn-piccolo" data-incassa="${o.id}">Segna pagato</button>` : ""}
+                        ${!o.sospeso && o.stato === "ritirato" && !o.pagato ? `<button class="btn btn-piccolo" data-incassa="${o.id}">Segna pagato</button>` : ""}
                         <button class="btn btn-piccolo" data-documenti="${o.id}">Ricevuta ed etichette</button>
+                        ${isAdmin() ? `<button class="btn btn-piccolo" data-sospendi="${o.id}">${o.sospeso ? "Abilita" : "Disabilita"}</button>` : ""}
                         ${isAdmin() ? `<button class="btn btn-piccolo btn-pericolo" data-elimina="${o.id}">Elimina</button>` : ""}
                     </div>
                 </td>
@@ -1060,6 +1066,32 @@ $("#righeOrdini").addEventListener("click", async e => {
     }
     if(documenti){
         apriDocumentiOrdine(db.ordini.find(x => x.id === Number(documenti.dataset.documenti)));
+    }
+
+    /* Solo admin: mette in sospeso o riattiva un ordine (il database lo consente solo all'admin) */
+    const sospendi = e.target.closest("[data-sospendi]");
+    if(sospendi){
+        const id = Number(sospendi.dataset.sospendi);
+        const ordine = db.ordini.find(x => x.id === id);
+        const nuovo = !ordine.sospeso;
+        const risposta = await chiedi(
+            nuovo ? "Mettere l'ordine in sospeso?" : "Riattivare l'ordine?",
+            "Ordine #" + numeroOrdine(id) + " · " + ordine.nome + " " + ordine.cognome + (nuovo
+                ? " · resterà in elenco in grigio, ma non conterà nel piano di lavoro, nelle consegne e nei resoconti."
+                : " · tornerà nel piano di lavoro, nelle consegne e nei resoconti."),
+            [{ valore:"no", testo:"Annulla" }, { valore:"si", testo: nuovo ? "Disabilita" : "Abilita", primario:true }]
+        );
+        if(risposta !== "si") return;
+        sospendi.disabled = true;
+        const { error } = await sb.from("ordini").update({ sospeso:nuovo }).eq("id", id);
+        if(error){
+            sospendi.disabled = false;
+            return erroreDatabase(error, nuovo ? "Sospensione dell'ordine" : "Riattivazione dell'ordine");
+        }
+        ordine.sospeso = nuovo;
+        disegnaOrdini();
+        avvisa("Ordine #" + numeroOrdine(id) + (nuovo ? ": in sospeso" : ": riattivato"));
+        ricarica();   /* carico e date di ritiro cambiano */
     }
     if(elimina){
         if(!elimina.classList.contains("conferma")){
@@ -1176,7 +1208,7 @@ function disegnaConsegne(){
     const date = dateSettimana();
     const oggiI = oggiISO();
     const sede = isAdmin() ? sedeConsegne : utente.sede;
-    const ordini = db.ordini.filter(o => sede === "tutte" || o.sede === sede);
+    const ordini = db.ordini.filter(o => nonSospeso(o) && (sede === "tutte" || o.sede === sede));
 
     $("#consegne").innerHTML = date.map(d => {
         const giorno = daISO(d);
@@ -1713,7 +1745,7 @@ function apriPianoSettimana(){
         const somma = k => lavori.reduce((s,l) => s + quantitaInPiano(l, CAPI.find(c => c.k === k)), 0);
         const minuti = lavori.reduce((s,l) => s + l.minuti, 0);
         const cap = capacita(iso);
-        const riga = { iso, lavori, minuti, cap, ritiri: db.ordini.filter(o => o.ritiro === iso).length };
+        const riga = { iso, lavori, minuti, cap, ritiri: db.ordini.filter(o => o.ritiro === iso && nonSospeso(o)).length };
         CAPI.forEach(c => riga[c.k] = somma(c.k));
         return riga;
     });
@@ -1887,7 +1919,8 @@ e per servizio sono ripartiti dall'importo registrato dell'ordine, in proporzion
 ai prezzi: la somma torna sempre con il totale incassato.
 */
 function datiResoconto(periodo, sede){
-    const ordini = db.ordini.filter(o => o.data >= periodo.inizio && o.data <= periodo.fine && (sede === "tutte" || o.sede === sede));
+    /* Gli ordini in sospeso non contano negli incassi né nei capi */
+    const ordini = db.ordini.filter(o => nonSospeso(o) && o.data >= periodo.inizio && o.data <= periodo.fine && (sede === "tutte" || o.sede === sede));
     const vuoto = () => ({ ordini:0, capi:0, importo:0, incassato:0 });
     const r = {
         ...vuoto(),
