@@ -845,6 +845,14 @@ button,input,select{font:inherit;color:inherit;}
 .stato-pronto{background:var(--ok-soft);color:var(--ok);}
 .stato-ritirato{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line);}
 .azioni-riga{display:flex;gap:6px;justify-content:flex-end;flex-wrap:nowrap;}
+/* Pulsanti dell'ordine sempre visibili a destra, anche quando la tabella scorre di lato */
+.tabella-wrap .tabella .azioni-cella{position:sticky;right:0;z-index:1;background:var(--surface);box-shadow:-1px 0 0 var(--line), -10px 0 10px -10px rgba(0,0,0,.18);}
+.tabella-wrap .tabella tbody tr:hover td.azioni-cella{background:var(--surface-2);}
+/* Nella lista ordini i pulsanti stanno uno sotto l'altro: colonna stretta, niente scorrimento di lato */
+.tabella-wrap .azioni-riga{flex-direction:column;align-items:stretch;}
+.tabella-wrap .azioni-riga .btn{width:100%;}
+.cliente span{white-space:nowrap;}
+.tabella-wrap .tabella th, .tabella-wrap .tabella td{padding-left:10px;padding-right:10px;}
 .azioni-riga .btn{white-space:nowrap;}
 .vuoto{padding:40px 16px;text-align:center;color:var(--ink-3);}
 
@@ -1239,6 +1247,7 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
     .consegne{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 @media (max-width:640px){
+    .tabella-wrap .tabella .azioni-cella{position:static;box-shadow:none;}
     .res-kpi .kpi-voce strong{font-size:19px;}
     .res-blocco{padding:16px;}
     .barra-in{padding:10px 16px;gap:10px;}
@@ -1442,7 +1451,7 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
                             <th>Consegna</th>
                             <th>Ritiro</th>
                             <th>Stato</th>
-                            <th><span hidden>Azioni</span></th>
+                            <th class="azioni-cella"><span hidden>Azioni</span></th>
                         </tr>
                     </thead>
                     <tbody id="righeOrdini"></tbody>

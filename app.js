@@ -978,7 +978,7 @@ function disegnaOrdini(){
                 <td class="data-cella">${dataBreve(daISO(o.data))}<span class="sotto">ore ${o.creato.slice(11)}</span></td>
                 <td class="data-cella">${dataBreve(daISO(o.ritiro))}${inRitardo ? '<span class="ritardo">Oltre la data prevista</span>' : '<span class="sotto">dalle 14.00</span>'}</td>
                 <td><span class="stato stato-${o.stato}">${STATI[o.stato]}</span></td>
-                <td>
+                <td class="azioni-cella">
                     <div class="azioni-riga">
                         ${avanti ? `<button class="btn btn-piccolo" data-avanza="${o.id}" data-stato="${avanti[0]}">${avanti[1]}</button>` : ""}
                         ${o.stato === "ritirato" && !o.pagato ? `<button class="btn btn-piccolo" data-incassa="${o.id}">Segna pagato</button>` : ""}
