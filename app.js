@@ -693,11 +693,22 @@ function controllaTelefono(n){
     }
     return "";
 }
-/* I capi da lavare hanno il chip evidenziato: "+ lavaggio" oppure "solo lavaggio". */
-const chipsCapi = o => CAPI.filter(c => o[c.k] > 0)
+/* Sigle del servizio nella lista ordini: S = stirare, LS = lavare e stirare, L = lavare */
+const SIGLE_SERVIZIO = { stirare:["S","stirare"], lavare:["LS","lavare e stirare"], solo:["L","lavare"] };
+
+/*
+I capi da lavare hanno il chip evidenziato. Con "sigle" (lista ordini) il servizio
+è indicato con S / LS / L, altrimenti per esteso ("+ lavaggio", "solo lavaggio").
+*/
+const chipsCapi = (o, sigle = false) => CAPI.filter(c => o[c.k] > 0)
     .map(c => {
         const s = servizioDi(o, c);
-        return `<span class="chip${s ? " chip-lavare" : ""}"><b>${o[c.k]}</b> ${o[c.k] === 1 ? c.uno : c.nome.toLowerCase()}${s === "solo" ? " · solo lavaggio" : s ? " + lavaggio" : ""}</span>`;
+        const nome = o[c.k] === 1 ? c.uno : c.nome.toLowerCase();
+        if(sigle){
+            const [sigla, testo] = SIGLE_SERVIZIO[s === "solo" ? "solo" : s ? "lavare" : "stirare"];
+            return `<span class="chip${s ? " chip-lavare" : ""}" title="${testo}"><b>${o[c.k]}</b> ${nome} <span class="sigla">${sigla}</span></span>`;
+        }
+        return `<span class="chip${s ? " chip-lavare" : ""}"><b>${o[c.k]}</b> ${nome}${s === "solo" ? " · solo lavaggio" : s ? " + lavaggio" : ""}</span>`;
     })
     .join("");
 
@@ -973,7 +984,7 @@ function disegnaOrdini(){
                 <td class="num">#${numeroOrdine(o.id)}</td>
                 <td>${badgeSede(o.sede)}</td>
                 <td class="cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span>${esc(telefonoLeggibile(o.telefono))}</span></td>
-                <td><div class="chips">${chipsCapi(o)}</div></td>
+                <td><div class="chips">${chipsCapi(o, true)}</div></td>
                 <td class="importo-cella"><strong>${chf(o.importo)}</strong>${badgePagamento(o)}</td>
                 <td class="data-cella">${dataBreve(daISO(o.data))}<span class="sotto">ore ${o.creato.slice(11)}</span></td>
                 <td class="data-cella">${dataBreve(daISO(o.ritiro))}${inRitardo ? '<span class="ritardo">Oltre la data prevista</span>' : '<span class="sotto">dalle 14.00</span>'}</td>
