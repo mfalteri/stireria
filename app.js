@@ -1178,10 +1178,9 @@ function disegnaCarico(){
                 <td class="giorno-nome"><strong>${GIORNI[giorno.getDay()]}</strong><span>${pad(giorno.getDate())}/${pad(giorno.getMonth()+1)}</span></td>
                 <td><input class="turni-input" type="number" min="0" id="turni-${d}" data-data="${d}" value="${turniDi(d)}" aria-label="Turni ${GIORNI[giorno.getDay()]}"></td>
                 ${CAPI.map(c => `<td class="n">${g[c.k] || 0}</td>`).join("")}
-                <td class="n">${durata(arrivato)}</td>
                 <td>
                     <div class="utilizzo">
-                        <div class="utilizzo-testo"><b>${perc.toFixed(0)}%</b><span>${durata(eseguito)} / ${durata(cap)}</span></div>
+                        <div class="utilizzo-testo"><b>${perc.toFixed(0)}%</b></div>
                         <div class="barra-uso"><i class="${classeUso(perc)}" style="width:${Math.min(perc,100)}%"></i></div>
                     </div>
                 </td>

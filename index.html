@@ -908,23 +908,25 @@ button,input,select{font:inherit;color:inherit;}
 .giorni tr.oggi td:first-child{border-radius:10px 0 0 10px;}
 .giorni tr.oggi td:last-child{border-radius:0 10px 10px 0;}
 .giorno-nome strong{display:block;font-weight:700;}
-.giorno-nome span{font-size:12.5px;color:var(--ink-3);font-family:var(--mono);}
-.giorni .n{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+/* Numeri del piano settimanale: stesso carattere del resto del programma, cifre allineate */
+.giorno-nome span{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;}
+.giorni .n{font-variant-numeric:tabular-nums;}
 .turni-input{
     width:64px;
     height:38px;
     border:1px solid var(--line-2);
     border-radius:8px;
     background:var(--surface);
-    font-family:var(--mono);
+    font:inherit;
     font-size:16px;
     font-weight:600;
+    font-variant-numeric:tabular-nums;
     text-align:center;
 }
 .turni-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
-.utilizzo{display:grid;gap:5px;min-width:150px;}
-.utilizzo-testo{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-3);font-family:var(--mono);}
-.utilizzo-testo b{color:var(--ink);font-weight:600;}
+.utilizzo{display:grid;gap:5px;min-width:110px;}
+.utilizzo-testo{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-3);font-variant-numeric:tabular-nums;}
+.utilizzo-testo b{color:var(--ink);font-weight:700;}
 .barra-uso{height:10px;border-radius:99px;background:var(--track);overflow:hidden;}
 .barra-uso i{display:block;height:100%;border-radius:99px;transition:width .3s ease;}
 .uso-ok{background:var(--ok);}
@@ -932,7 +934,7 @@ button,input,select{font:inherit;color:inherit;}
 .uso-pieno{background:var(--bad);}
 .impostazioni{display:grid;gap:18px;}
 .impostazioni h3{font-size:18px;font-weight:700;}
-.impostazioni .campo input{min-height:42px;font-family:var(--mono);}
+.impostazioni .campo input{min-height:42px;font-variant-numeric:tabular-nums;}
 .impostazioni-capi{display:grid;gap:12px;}
 .imp-riga{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:center;}
 .imp-testa span{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);}
@@ -946,8 +948,9 @@ button,input,select{font:inherit;color:inherit;}
     border:1px solid var(--line-2);
     border-radius:8px;
     background:var(--surface);
-    font-family:var(--mono);
+    font:inherit;
     font-size:14px;
+    font-variant-numeric:tabular-nums;
 }
 .impostazioni-capi input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
 .impostazioni-capi input{-moz-appearance:textfield;}
@@ -1538,7 +1541,6 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
                                     <th class="n">Completi</th>
                                     <th class="n">½ ceste</th>
                                     <th class="n">Ceste</th>
-                                    <th class="n">Arrivato</th>
                                     <th>Utilizzo</th>
                                 </tr>
                             </thead>
