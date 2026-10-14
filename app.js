@@ -1456,7 +1456,7 @@ function htmlEtichetta(o, voce, indice, totale){
                 <strong>${dataPunti(daISO(o.ritiro))}</strong>
                 <small>${ORA_RITIRO}</small>
                 <small>presso ${SEDI[o.sede]}</small>
-                <b class="et-pagato">${o.pagato ? "PAGATO" : "DA PAGARE"}</b>
+                <b class="et-pagato"><span>${o.pagato ? "Pagato" : "Da pagare"}</span>${chf(o.importo)}</b>
             </div>
         </div>`;
 }
@@ -1631,12 +1631,14 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0, s = 1){
     pdf.text(ORA_RITIRO, X(sx + 4), Y(120.8 + r));
     pdf.text("presso " + SEDI[o.sede], X(sx + 4), Y(125.6 + r));
 
-    /* Pagamento in un riquadro (solo contorno): "PAGATO" oppure "DA PAGARE" */
+    /* Pagamento in un riquadro (solo contorno): "PAGATO" oppure "DA PAGARE" e sotto l'importo */
     pdf.setLineWidth(F(0.6));
-    pdf.roundedRect(X(dx - 34), Y(120), F(30), F(10), F(1.2), F(1.2), "S");
+    pdf.roundedRect(X(dx - 36), Y(121.5), F(32), F(11), F(1.2), F(1.2), "S");
     pdf.setFont("helvetica","bold");
-    pdf.setFontSize(F(11));
-    pdf.text(o.pagato ? "PAGATO" : "DA PAGARE", X(dx - 19), Y(126.9), { align:"center" });
+    pdf.setFontSize(F(7));
+    pdf.text(o.pagato ? "PAGATO" : "DA PAGARE", X(dx - 20), Y(125.2), { align:"center", charSpace:F(0.3) });
+    pdf.setFontSize(F(12));
+    pdf.text(chf(o.importo), X(dx - 20), Y(130.6), { align:"center" });
 }
 
 /* Aggiunge al PDF le etichette, una per pagina A4, dopo le pagine già presenti. */

@@ -1229,13 +1229,19 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
     position:absolute;
     right:4mm;
     bottom:4mm;
-    padding:1.6mm 2.6mm;
+    display:grid;
+    justify-items:center;
+    gap:.4mm;
+    min-width:24mm;
+    padding:1.2mm 2.6mm;
     border:.6mm solid #000;
     border-radius:1.2mm;
-    font-size:11pt;
+    font-size:12pt;
     font-weight:700;
-    letter-spacing:.04em;
+    white-space:nowrap;
 }
+/* "Pagato" / "Da pagare" sopra l'importo */
+.et-ritiro .et-pagato span{font-size:7.5pt;letter-spacing:.08em;text-transform:uppercase;}
 
 /* Ricevuta: stato del pagamento */
 .doc-pagamento{
