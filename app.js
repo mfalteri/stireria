@@ -1321,7 +1321,8 @@ function disegnaConsegne(){
     const date = dateSettimana();
     const oggiI = oggiISO();
     const sede = isAdmin() ? sedeConsegne : utente.sede;
-    const ordini = db.ordini.filter(o => nonSospeso(o) && (sede === "tutte" || o.sede === sede));
+    /* Solo gli ordini ancora da consegnare: quelli già ritirati dal cliente (e i sospesi) non compaiono */
+    const ordini = db.ordini.filter(o => nonSospeso(o) && o.stato !== "ritirato" && (sede === "tutte" || o.sede === sede));
 
     $("#consegne").innerHTML = date.map(d => {
         const giorno = daISO(d);
