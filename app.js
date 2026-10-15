@@ -40,33 +40,65 @@ const CAPI = [
 /*
 Servizio di ogni tipo di capo ("lavaggi"): false = solo stiratura,
 true = lavaggio e stiratura, "solo" = solo lavaggio (ceste e mezze ceste).
+Le ceste (al massimo 3) hanno un servizio per pezzo: per loro il servizio è
+un array, es. [false, "solo", true] = 1ª da stirare, 2ª solo lavare, 3ª lavare e stirare.
 */
+const MAX_CESTE = 3;
 const prezzoUnitario = (c, servizio) =>
     Number(db.config[c.prezzo + (servizio === "solo" ? "SoloLavato" : servizio ? "Lavato" : "")]) || 0;
+
+/* Chiave del servizio ("stirare" / "lavare" / "solo") ↔ valore (false / true / "solo") */
+const chiaveServizio = s => s === "solo" ? "solo" : s ? "lavare" : "stirare";
+const valoreServizio = k => k === "solo" ? "solo" : k === "lavare";
+
+/*
+Gruppi di pezzi con lo stesso servizio: [{ servizio, n }], in ordine stirare,
+lavare e stirare, solo lavare. Un capo normale ha un solo gruppo.
+*/
+function gruppiServizio(n, servizio){
+    n = Number(n) || 0;
+    if(n <= 0) return [];
+    if(!Array.isArray(servizio)) return [{ servizio, n }];
+    return ["stirare", "lavare", "solo"]
+        .map(k => ({ servizio:valoreServizio(k), n:servizio.slice(0, n).filter(s => chiaveServizio(s) === k).length }))
+        .filter(g => g.n > 0);
+}
+
 /* Prezzi: lo stesso calcolo lo fa il database alla registrazione (calcola_importo_ordine). */
 const calcolaImporto = (capi, lavaggi) =>
-    Math.round(CAPI.reduce((s,c) => s + (Number(capi[c.k]) || 0) * prezzoUnitario(c, lavaggi[c.k]), 0) * 100) / 100;
+    Math.round(CAPI.reduce((s,c) => s + gruppiServizio(capi[c.k], lavaggi[c.k])
+        .reduce((t,g) => t + g.n * prezzoUnitario(c, g.servizio), 0), 0) * 100) / 100;
 
-/* Nel database: lavare_camicie, … e solo_lavare_ceste, solo_lavare_mezze_ceste */
+/* Nel database: lavare_camicie, … e solo_lavare_mezze_ceste; per le ceste servizi_ceste (un valore per cesta) */
 const campoLavare = c => "lavare_" + c.k;
 const campoSoloLavare = c => "solo_lavare_" + c.k;
-const soloLavare = (o, c) => !!c.soloLavare && !!o[campoSoloLavare(c)] && o[c.k] > 0;
-const daLavare = (o, c) => !soloLavare(o, c) && !!o[campoLavare(c)] && o[c.k] > 0;
-const servizioDi = (o, c) => soloLavare(o, c) ? "solo" : daLavare(o, c);
+function servizioDi(o, c){
+    if(c.k === "ceste" && Array.isArray(o.servizi_ceste) && o.servizi_ceste.length)
+        return o.servizi_ceste.map(valoreServizio);
+    if(c.soloLavare && o[campoSoloLavare(c)] && o[c.k] > 0) return "solo";
+    return !!o[campoLavare(c)] && o[c.k] > 0;
+}
 const lavaggiDi = o => Object.fromEntries(CAPI.map(c => [c.k, servizioDi(o, c)]));
+const gruppiDi = (o, c) => gruppiServizio(o[c.k], servizioDi(o, c));
+/* Pezzi di un capo solo da lavare / da lavare e stirare */
+const quantiSolo = (o, c) => gruppiDi(o, c).filter(g => g.servizio === "solo").reduce((s,g) => s + g.n, 0);
+const soloLavare = (o, c) => quantiSolo(o, c) > 0;
+const daLavare = (o, c) => gruppiDi(o, c).some(g => g.servizio === true);
+/* Servizio di un singolo pezzo (per le etichette delle ceste, una per cesta) */
+const servizioPezzo = (o, c, pezzo) => { const s = servizioDi(o, c); return Array.isArray(s) ? s[(pezzo || 1) - 1] : s; };
 
 /* I capi "solo lavare" non si stirano: tempo di stiratura 0. */
 const capiDaStirare = (capi, lavaggi) =>
-    Object.fromEntries(CAPI.map(c => [c.k, lavaggi[c.k] === "solo" ? 0 : (Number(capi[c.k]) || 0)]));
+    Object.fromEntries(CAPI.map(c => [c.k, gruppiServizio(capi[c.k], lavaggi[c.k])
+        .filter(g => g.servizio !== "solo").reduce((s,g) => s + g.n, 0)]));
 const minutiStiratura = o => minutiCapi(capiDaStirare(o, lavaggiDi(o)));
 
 /* "solo stiratura", "lavaggio e stiratura", "solo lavaggio" o "in parte da lavare" */
 function descriviServizio(capi, lavaggi){
-    const presenti = CAPI.filter(c => capi[c.k] > 0);
-    const lavati = presenti.filter(c => lavaggi[c.k]);
-    if(!lavati.length) return "solo stiratura";
-    if(presenti.every(c => lavaggi[c.k] === "solo")) return "solo lavaggio";
-    if(presenti.every(c => lavaggi[c.k] === true)) return "lavaggio e stiratura";
+    const gruppi = CAPI.flatMap(c => gruppiServizio(capi[c.k], lavaggi[c.k]));
+    if(!gruppi.some(g => g.servizio)) return "solo stiratura";
+    if(gruppi.every(g => g.servizio === "solo")) return "solo lavaggio";
+    if(gruppi.every(g => g.servizio === true)) return "lavaggio e stiratura";
     return "in parte da lavare";
 }
 const chf = n => "CHF " + (Number(n) || 0).toFixed(2);
@@ -352,10 +384,15 @@ Quantità di un capo in una riga del piano: nelle righe "solo lavaggio" solo i c
 da lavare; nelle righe di stiratura di quegli ordini, solo i capi da stirare.
 */
 function quantitaInPiano(l, c){
-    const solo = soloLavare(l.ordine, c);
-    if(l.soloLavaggio) return solo ? l.ordine[c.k] : 0;
-    if(l.senzaSoloLavare && solo) return 0;
-    return l.ordine[c.k];
+    return gruppiInPiano(l, c).reduce((s,g) => s + g.n, 0);
+}
+
+/* Gruppi (servizio e quantità) di un capo mostrati in una riga del piano */
+function gruppiInPiano(l, c){
+    const gruppi = gruppiDi(l.ordine, c);
+    if(l.soloLavaggio) return gruppi.filter(g => g.servizio === "solo");
+    if(l.senzaSoloLavare) return gruppi.filter(g => g.servizio !== "solo");
+    return gruppi;
 }
 
 /* ---------- Accesso (Supabase Auth) ---------- */
@@ -582,16 +619,25 @@ const SERVIZI = [
     { valore:"lavare",  icona:"icone/lavare-stirare.png", testo:"Lavare e stirare" }
 ];
 
+/*
+Ceste: una barra per cesta, ognuna con il proprio servizio (al massimo 3).
+cesteScelte = servizio di ogni cesta presente ("stirare" / "lavare" / "solo" / null se non scelto).
+Sotto l'ultima cesta compare una barra vuota per aggiungere la successiva.
+*/
+let cesteScelte = [];
+
+const iconeServizio = (c, nome, attributi, scelto) => SERVIZI.map(s => !s.soloLavare || c.soloLavare ? `
+                <label class="servizio servizio-${s.valore}" title="${s.testo}">
+                    <input type="radio" name="${nome}" value="${s.valore}" ${attributi} aria-label="${s.testo}"${scelto === s.valore ? " checked" : ""}>
+                    <img src="${s.icona}" alt="">
+                </label>` : `<span class="servizio-vuoto"></span>`).join("");
+
 function disegnaCapi(){
-    $("#capi").innerHTML = CAPI.map(c => `
+    $("#capi").innerHTML = CAPI.map(c => c.k === "ceste" ? `<div class="righe-ceste" id="righeCeste"></div>` : `
         <div class="capo" data-capo="${c.k}">
             <strong>${c.nome}</strong>
             <span class="servizi" role="radiogroup" aria-label="Servizio per ${c.nome.toLowerCase()}">
-                ${SERVIZI.map(s => !s.soloLavare || c.soloLavare ? `
-                <label class="servizio servizio-${s.valore}" title="${s.testo}">
-                    <input type="radio" name="servizio-${c.k}" value="${s.valore}" data-servizio="${c.k}" aria-label="${s.testo}">
-                    <img src="${s.icona}" alt="">
-                </label>` : `<span class="servizio-vuoto"></span>`).join("")}
+                ${iconeServizio(c, "servizio-" + c.k, `data-servizio="${c.k}"`)}
             </span>
             <div class="stepper">
                 <button type="button" data-passo="-1" aria-label="Togli ${c.uno}">−</button>
@@ -612,52 +658,110 @@ function disegnaCapi(){
     /* I radio dello stesso capo hanno lo stesso "name": se ne sceglie uno solo. */
     $$("[data-servizio]").forEach(r => r.addEventListener("change", () => {
         r.closest(".capo").classList.remove("manca-servizio");
-        if(!capiSenzaServizio().length && $("#erroreOrdine").textContent.startsWith("Scegli il servizio")) mostraErroreOrdine("");
-        aggiornaTicket();
+        servizioCambiato();
     }));
+
+    /* Ceste: le barre si ridisegnano a ogni modifica (eventi delegati al contenitore) */
+    $("#righeCeste").addEventListener("click", e => {
+        const passo = e.target.closest("[data-passo-cesta]");
+        if(!passo) return;
+        const i = Number(passo.dataset.pezzo);
+        if(Number(passo.dataset.passoCesta) < 0) cesteScelte.splice(i, 1);                 /* toglie quella cesta, le altre salgono */
+        else if(i === cesteScelte.length && cesteScelte.length < MAX_CESTE) cesteScelte.push(null);
+        disegnaCeste();
+        aggiornaTicket();
+    });
+    $("#righeCeste").addEventListener("change", e => {
+        const r = e.target.closest("[data-servizio-cesta]");
+        if(!r) return;
+        const i = Number(r.dataset.servizioCesta);
+        if(i === cesteScelte.length) cesteScelte.push(r.value);   /* scegliere il servizio sulla barra vuota aggiunge la cesta */
+        else cesteScelte[i] = r.value;
+        disegnaCeste();
+        servizioCambiato();
+    });
+    disegnaCeste();
 }
 
-/* Servizio scelto per un capo: "stirare", "lavare", "solo" oppure null se non scelto. */
+function disegnaCeste(){
+    const c = CAPI.find(x => x.k === "ceste");
+    const n = cesteScelte.length;
+    const righe = Math.min(n + 1, MAX_CESTE);
+    const nome = i => n === 0 ? c.nome : (i + 1) + "ª cesta";
+    $("#righeCeste").innerHTML = Array.from({ length:righe }, (_, i) => {
+        const presente = i < n;
+        return `
+        <div class="capo capo-cesta${presente ? " attivo" : ""}${presente && !cesteScelte[i] && $("#righeCeste").dataset.controllo ? " manca-servizio" : ""}" data-capo="ceste" data-pezzo="${i}">
+            <strong>${nome(i)}</strong>
+            <span class="servizi" role="radiogroup" aria-label="Servizio per la ${(i + 1)}ª cesta">
+                ${iconeServizio(c, "servizio-ceste-" + i, `data-servizio-cesta="${i}"`, presente ? cesteScelte[i] : null)}
+            </span>
+            <div class="stepper">
+                <button type="button" data-passo-cesta="-1" data-pezzo="${i}" aria-label="Togli la ${(i + 1)}ª cesta"${presente ? "" : " disabled"}>−</button>
+                <input type="number" value="${presente ? 1 : 0}" readonly tabindex="-1" aria-label="${nome(i)}">
+                <button type="button" data-passo-cesta="1" data-pezzo="${i}" aria-label="Aggiungi la ${(i + 1)}ª cesta"${presente ? " disabled" : ""}>+</button>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+function servizioCambiato(){
+    if(!capiSenzaServizio().length && $("#erroreOrdine").textContent.startsWith("Scegli il servizio")){
+        mostraErroreOrdine("");
+        delete $("#righeCeste").dataset.controllo;
+    }
+    aggiornaTicket();
+}
+
+/* Servizio scelto per un capo: "stirare", "lavare", "solo" oppure null se non scelto (ceste: array). */
 function servizioScelto(c){
+    if(c.k === "ceste") return cesteScelte.slice();
     const r = $(`[data-servizio="${c.k}"]:checked`);
     return r ? r.value : null;
 }
 
-/* Capi presenti nell'ordine per cui non è stato scelto il servizio. */
+/* Capi presenti nell'ordine per cui non è stato scelto il servizio (per le ceste: almeno una senza). */
 function capiSenzaServizio(){
     const capi = capiInseriti();
-    return CAPI.filter(c => capi[c.k] > 0 && !servizioScelto(c));
+    return CAPI.filter(c => capi[c.k] > 0 && (c.k === "ceste" ? cesteScelte.some(s => !s) : !servizioScelto(c)));
 }
 
 function capiInseriti(){
     const capi = {};
-    CAPI.forEach(c => capi[c.k] = Math.max(0, parseInt($("#" + c.k).value) || 0));
+    CAPI.forEach(c => capi[c.k] = c.k === "ceste" ? cesteScelte.length : Math.max(0, parseInt($("#" + c.k).value) || 0));
     return capi;
 }
 
-/* false = solo stiratura, true = lavaggio e stiratura, "solo" = solo lavaggio */
+/* false = solo stiratura, true = lavaggio e stiratura, "solo" = solo lavaggio (ceste: un valore per cesta) */
 function lavaggiInseriti(){
     const lavaggi = {};
     CAPI.forEach(c => {
         const s = servizioScelto(c);
-        lavaggi[c.k] = s === "solo" ? "solo" : s === "lavare";
+        lavaggi[c.k] = Array.isArray(s) ? s.map(valoreServizio) : valoreServizio(s);
     });
     return lavaggi;
 }
 
-const testoServizio = s => s === "solo" ? "solo lavaggio" : s ? "lavaggio e stiratura" : "";
+const testoServizio = s => s === "solo" ? "solo lavaggio" : s ? "lavaggio e stiratura" : "stiratura";
 
-/* Totale del modulo: cambia con i capi e con le caselle "Lavare". */
+/* Totale del modulo: cambia con i capi e con il servizio scelto. */
 function aggiornaTotale(){
     const capi = capiInseriti();
     const lavaggi = lavaggiInseriti();
     const totale = calcolaImporto(capi, lavaggi);
+    const riga = (c, n, testo, prezzo, daScegliere) =>
+        `<li><span>${n} × ${n === 1 ? c.uno : c.nome.toLowerCase()} <em${daScegliere ? ` class="da-scegliere"` : ""}>${testo}</em></span><span>${chf(n * prezzo)}</span></li>`;
     const righe = CAPI.filter(c => capi[c.k] > 0)
-        .map(c => {
-            /* Servizio di ogni riga; finché non è scelto lo si segnala */
+        .flatMap(c => {
+            /* Servizio di ogni riga; finché non è scelto lo si segnala (prezzo provvisorio: stiratura) */
             const scelto = servizioScelto(c);
-            const testo = !scelto ? "servizio da scegliere" : scelto === "stirare" ? "stiratura" : testoServizio(lavaggi[c.k]);
-            return `<li><span>${capi[c.k]} × ${capi[c.k] === 1 ? c.uno : c.nome.toLowerCase()} <em${scelto ? "" : ` class="da-scegliere"`}>${testo}</em></span><span>${chf(capi[c.k] * prezzoUnitario(c, lavaggi[c.k]))}</span></li>`;
+            if(Array.isArray(scelto)){
+                const daScegliere = scelto.filter(s => !s).length;
+                return gruppiServizio(scelto.length, scelto.filter(Boolean).map(valoreServizio))
+                    .map(g => riga(c, g.n, testoServizio(g.servizio), prezzoUnitario(c, g.servizio)))
+                    .concat(daScegliere ? [riga(c, daScegliere, "servizio da scegliere", prezzoUnitario(c, false), true)] : []);
+            }
+            return [riga(c, capi[c.k], scelto ? testoServizio(lavaggi[c.k]) : "servizio da scegliere", prezzoUnitario(c, lavaggi[c.k]), !scelto)];
         })
         .join("");
     const descrizione = capiSenzaServizio().length ? "servizio da scegliere" : descriviServizio(capi, lavaggi);
@@ -702,16 +806,16 @@ const SIGLE_SERVIZIO = { stirare:["S","stirare"], lavare:["LS","lavare e stirare
 I capi da lavare hanno il chip evidenziato. Con "sigle" (lista ordini) il servizio
 è indicato con S / LS / L, altrimenti per esteso ("+ lavaggio", "solo lavaggio").
 */
-const chipsCapi = (o, sigle = false) => CAPI.filter(c => o[c.k] > 0)
-    .map(c => {
-        const s = servizioDi(o, c);
-        const nome = o[c.k] === 1 ? c.uno : c.nome.toLowerCase();
+const chipsCapi = (o, sigle = false) => CAPI.flatMap(c => gruppiDi(o, c)
+    .map(({ servizio:s, n }) => {
+        /* Un chip per servizio: le ceste miste ne hanno più d'uno */
+        const nome = n === 1 ? c.uno : c.nome.toLowerCase();
         if(sigle){
-            const [sigla, testo] = SIGLE_SERVIZIO[s === "solo" ? "solo" : s ? "lavare" : "stirare"];
-            return `<span class="chip${s ? " chip-lavare" : ""}" title="${testo}"><b>${o[c.k]}</b> ${nome} <span class="sigla">${sigla}</span></span>`;
+            const [sigla, testo] = SIGLE_SERVIZIO[chiaveServizio(s)];
+            return `<span class="chip${s ? " chip-lavare" : ""}" title="${testo}"><b>${n}</b> ${nome} <span class="sigla">${sigla}</span></span>`;
         }
-        return `<span class="chip${s ? " chip-lavare" : ""}"><b>${o[c.k]}</b> ${nome}${s === "solo" ? " · solo lavaggio" : s ? " + lavaggio" : ""}</span>`;
-    })
+        return `<span class="chip${s ? " chip-lavare" : ""}"><b>${n}</b> ${nome}${s === "solo" ? " · solo lavaggio" : s ? " + lavaggio" : ""}</span>`;
+    }))
     .join("");
 
 const badgePagamento = o => o.pagato
@@ -758,7 +862,7 @@ function aggiornaTicket(){
     }
 
     const capi = capiInseriti();
-    $$(".capo").forEach(r => r.classList.toggle("attivo", capi[r.dataset.capo] > 0));
+    $$(".capo:not(.capo-cesta)").forEach(r => r.classList.toggle("attivo", capi[r.dataset.capo] > 0));
     const totale = aggiornaTotale();
 
     const deposito = dataISO(giornoDeposito(oggi()));
@@ -846,7 +950,10 @@ $("#formOrdine").addEventListener("submit", async e => {
     if(erroreTelefono) return mostraErroreOrdine(erroreTelefono,"telefono");
     if(!CAPI.some(c => capi[c.k] > 0)) return mostraErroreOrdine("Aggiungi almeno un capo.");
     const senzaServizio = capiSenzaServizio();
-    $$(".capo").forEach(r => r.classList.toggle("manca-servizio", senzaServizio.some(c => c.k === r.dataset.capo)));
+    $$(".capo:not(.capo-cesta)").forEach(r => r.classList.toggle("manca-servizio", senzaServizio.some(c => c.k === r.dataset.capo)));
+    /* Ceste: in rosso solo le barre delle ceste senza servizio */
+    if(senzaServizio.some(c => c.k === "ceste")) $("#righeCeste").dataset.controllo = "1";
+    disegnaCeste();
     if(senzaServizio.length) return mostraErroreOrdine(
         "Scegli il servizio (stirare, lavare e stirare" + (senzaServizio.some(c => c.soloLavare) ? " o lavare" : "") + ") per: " +
         senzaServizio.map(c => c.nome.toLowerCase()).join(", ") + ".");
@@ -873,6 +980,10 @@ $("#formOrdine").addEventListener("submit", async e => {
         ritiro: ritiroScelto,
         ...Object.fromEntries(CAPI.map(c => [campoLavare(c), lavaggi[c.k] === true && capi[c.k] > 0])),
         ...Object.fromEntries(CAPI.filter(c => c.soloLavare).map(c => [campoSoloLavare(c), lavaggi[c.k] === "solo" && capi[c.k] > 0])),
+        /* Ceste: un servizio per cesta (il database ricava da qui anche prezzo e carico) */
+        servizi_ceste: cesteScelte.length ? cesteScelte.slice() : null,
+        lavare_ceste: cesteScelte.includes("lavare"),
+        solo_lavare_ceste: cesteScelte.includes("solo"),
         pagato: pagamento === "si",
         osservazioni
     }).select().single();
@@ -907,9 +1018,12 @@ function nuovoOrdine(mettiFuoco = true){
     ritiroScelto = null;
     bloccaModulo(false);
     ["nome","cognome","telefono","osservazioni"].forEach(id => $("#" + id).value = "");
-    CAPI.forEach(c => $("#" + c.k).value = 0);
+    CAPI.filter(c => c.k !== "ceste").forEach(c => $("#" + c.k).value = 0);
     $$("[data-servizio]").forEach(r => r.checked = false);
     $$(".capo").forEach(r => r.classList.remove("manca-servizio"));
+    cesteScelte = [];
+    delete $("#righeCeste").dataset.controllo;
+    disegnaCeste();
     mostraErroreOrdine("");
     aggiornaTicket();
     if(mettiFuoco) $("#nome").focus();
@@ -1386,10 +1500,17 @@ function telefonoLeggibile(n){
 /* Tipi di capo presenti nell'ordine: una etichetta per ciascuno. */
 const capiEtichette = o => CAPI.filter(c => o[c.k] > 0);
 const nomeCapo = (c, n) => n === 1 ? c.uno : c.nome.toLowerCase();
-const servizioCapo = (o, c) => soloLavare(o, c) ? "SOLO DA LAVARE (NON STIRARE)" : daLavare(o, c) ? "DA LAVARE E STIRARE" : "SOLO DA STIRARE";
+/* Servizio scritto in grande sull'etichetta (per le ceste: quello della cesta dell'etichetta) */
+const testoServizioEtichetta = s => s === "solo" ? "SOLO DA LAVARE (NON STIRARE)" : s ? "DA LAVARE E STIRARE" : "SOLO DA STIRARE";
+const servizioCapo = (o, c, voce) => testoServizioEtichetta(servizioPezzo(o, c, voce && voce.pezzo));
 
-/* Comanda completa: tutti i capi dell'ordine, con il servizio di ciascuno. */
-const servizioBreve = (o, c) => soloLavare(o, c) ? "solo lavare" : daLavare(o, c) ? "lavare e stirare" : "stirare";
+/* Comanda completa: tutti i capi dell'ordine, con il servizio di ciascuno (ceste miste: "1 S · 2 L") */
+const testoServizioBreve = s => s === "solo" ? "solo lavare" : s ? "lavare e stirare" : "stirare";
+function servizioBreve(o, c){
+    const gruppi = gruppiDi(o, c);
+    if(gruppi.length <= 1) return testoServizioBreve(gruppi[0] ? gruppi[0].servizio : false);
+    return gruppi.map(g => g.n + " " + SIGLE_SERVIZIO[chiaveServizio(g.servizio)][0]).join(" · ");
+}
 
 const dataPunti = d => GIORNI[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth()+1) + "." + d.getFullYear();
 
@@ -1433,11 +1554,11 @@ function htmlEtichetta(o, voce, indice, totale){
                 <strong>${esc(o.nome)} ${esc(o.cognome)}</strong>
                 <span>${esc(telefonoLeggibile(o.telefono))} · registrato il ${pad(creato.getDate())}.${pad(creato.getMonth()+1)}. alle ${o.creato.slice(11)}</span>
             </div>
-            <div class="et-capo${servizioDi(o, c) ? " lavare" : ""}">
+            <div class="et-capo${servizioPezzo(o, c, voce.pezzo) ? " lavare" : ""}">
                 <span class="et-indice">Etichetta ${indice} di ${totale}</span>
                 <b class="et-quantita">${quantitaVoce(o, voce)}</b>
                 <strong class="et-categoria">${categoriaVoce(o, voce)}</strong>
-                <span class="et-servizio">${servizioCapo(o, c)}</span>
+                <span class="et-servizio">${servizioCapo(o, c, voce)}</span>
             </div>
             <div class="et-comanda">
                 <span class="et-comanda-titolo">Comanda completa</span>
@@ -1490,14 +1611,14 @@ function htmlRicevuta(o){
         <h2>Capi consegnati</h2>
         <table class="doc-tab">
             <thead><tr><th>Capo</th><th>Servizio</th><th class="n">Quantità</th><th class="n">Prezzo</th><th class="n">Totale</th></tr></thead>
-            <tbody>${CAPI.filter(c => o[c.k] > 0).map(c => `
+            <tbody>${CAPI.flatMap(c => gruppiDi(o, c).map(g => `
                 <tr>
                     <td>${c.nome}</td>
-                    <td>${soloLavare(o, c) ? "Solo lavaggio" : daLavare(o, c) ? "Lavaggio e stiratura" : "Stiratura"}</td>
-                    <td class="n">${o[c.k]}</td>
-                    <td class="n">${chf(prezzoUnitario(c, servizioDi(o, c)))}</td>
-                    <td class="n">${chf(o[c.k] * prezzoUnitario(c, servizioDi(o, c)))}</td>
-                </tr>`).join("")}</tbody>
+                    <td>${g.servizio === "solo" ? "Solo lavaggio" : g.servizio ? "Lavaggio e stiratura" : "Stiratura"}</td>
+                    <td class="n">${g.n}</td>
+                    <td class="n">${chf(prezzoUnitario(c, g.servizio))}</td>
+                    <td class="n">${chf(g.n * prezzoUnitario(c, g.servizio))}</td>
+                </tr>`)).join("")}</tbody>
             <tfoot><tr><td colspan="4">Totale</td><td class="n">${chf(o.importo)}</td></tr></tfoot>
         </table>
         <div class="doc-pagamento ${o.pagato ? "pagato" : ""}">
@@ -1541,7 +1662,7 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0, s = 1){
     const W = ETICHETTA.larghezza, sx = 4, dx = W - 4, larghezza = dx - sx;
     const creato = daISO(o.creato.slice(0,10));
     const taglia = (testo, max) => pdf.splitTextToSize(testo, F(max))[0];
-    const lavare = !!servizioDi(o, c);   /* bordo spesso per "lavare" e "solo lavare" */
+    const lavare = !!servizioPezzo(o, c, voce.pezzo);   /* bordo spesso per "lavare" e "solo lavare" */
     /* Con osservazioni il riquadro capo, la comanda e il ritiro sono più compatti. */
     const oss = !!o.osservazioni;
     const P = oss
@@ -1591,7 +1712,7 @@ function disegnaEtichetta(pdf, o, voce, indice, totale, x0, y0, s = 1){
     pdf.setFontSize(F(16));
     pdf.text(taglia(categoriaVoce(o, voce).toUpperCase(), larghezza - 8), X(sx + 4), Y(P.cat));
     pdf.setFontSize(F(10));
-    pdf.text(servizioCapo(o, c), X(sx + 4), Y(P.serv), { charSpace:F(0.2) });
+    pdf.text(servizioCapo(o, c, voce), X(sx + 4), Y(P.serv), { charSpace:F(0.2) });
 
     /* Comanda completa: tutti i capi dell'ordine, quello di questa etichetta in grassetto */
     pdf.setFont("helvetica","normal");
@@ -1671,9 +1792,10 @@ function righeCapi(lavori){
                 <td class="doc-numero">#${numeroOrdine(o.id)}</td>
                 <td><span class="doc-cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong></span><span class="piccolo">${SEDI[o.sede]} · ${nota}</span></td>
                 ${CAPI.map(c => {
-                    const q = quantitaInPiano(l, c);
-                    /* S = stirare, SL = stirare e lavare, L = solo lavare */
-                    return `<td class="n">${q ? q + (soloLavare(o, c) ? " L" : daLavare(o, c) ? " SL" : " S") : "–"}</td>`;
+                    /* S = stirare, SL = stirare e lavare, L = solo lavare (ceste miste: es. "1 S + 2 L") */
+                    const testo = gruppiInPiano(l, c)
+                        .map(g => g.n + (g.servizio === "solo" ? " L" : g.servizio ? " SL" : " S")).join(" + ");
+                    return `<td class="n">${testo || "–"}</td>`;
                 }).join("")}
             </tr>`;
     }).join("");
@@ -1886,8 +2008,7 @@ let sedeRes = "tutte";
 let sezioniRes = Object.fromEntries(SEZIONI_RESOCONTO.map(s => [s.k, true]));
 try{ Object.assign(sezioniRes, JSON.parse(localStorage.getItem(CHIAVE_SEZIONI) || "{}")); }catch(e){}
 
-const chiaveServizio = s => s === "solo" ? "solo" : s ? "lavare" : "stirare";
-const intero = n => Math.round(n).toLocaleString("de-CH");
+const intero =n => Math.round(n).toLocaleString("de-CH");
 const percento = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
 
 /* Periodo (date ISO incluse) che contiene il giorno d, più il periodo precedente per il confronto. */
@@ -1934,7 +2055,7 @@ function datiResoconto(periodo, sede){
     };
     for(const o of ordini){
         const capi = CAPI.reduce((s,c) => s + (o[c.k] || 0), 0);
-        const listino = CAPI.reduce((s,c) => s + (o[c.k] || 0) * prezzoUnitario(c, servizioDi(o, c)), 0);
+        const listino = calcolaImporto(o, lavaggiDi(o));
         const fattore = listino > 0 ? o.importo / listino : 0;
         const incassato = o.pagato ? o.importo : 0;
 
@@ -1949,14 +2070,15 @@ function datiResoconto(periodo, sede){
         g.ordini++; g.capi += capi; g.importo += o.importo; g.incassato += incassato;
 
         for(const c of CAPI){
-            const n = o[c.k] || 0;
-            if(!n) continue;
-            const servizio = chiaveServizio(servizioDi(o, c));
-            const importo = n * prezzoUnitario(c, servizioDi(o, c)) * fattore;
-            const pc = r.perCapo[c.k];
-            pc.capi += n; pc.importo += importo; pc[servizio] += n; pc.importi[servizio] += importo;
-            r.perServizio[servizio].capi += n;
-            r.perServizio[servizio].importo += importo;
+            /* Un gruppo per servizio (le ceste possono averne più d'uno) */
+            for(const g of gruppiDi(o, c)){
+                const servizio = chiaveServizio(g.servizio);
+                const importo = g.n * prezzoUnitario(c, g.servizio) * fattore;
+                const pc = r.perCapo[c.k];
+                pc.capi += g.n; pc.importo += importo; pc[servizio] += g.n; pc.importi[servizio] += importo;
+                r.perServizio[servizio].capi += g.n;
+                r.perServizio[servizio].importo += importo;
+            }
         }
     }
     r.medio = r.ordini ? r.importo / r.ordini : 0;
