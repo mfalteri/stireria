@@ -799,22 +799,18 @@ function controllaTelefono(n){
     }
     return "";
 }
-/* Sigle del servizio nella lista ordini: S = stirare, LS = lavare e stirare, L = lavare */
+/* Sigle del servizio (lista ordini e piano consegne): S = stirare, LS = lavare e stirare, L = lavare */
 const SIGLE_SERVIZIO = { stirare:["S","stirare"], lavare:["LS","lavare e stirare"], solo:["L","lavare"] };
 
 /*
-I capi da lavare hanno il chip evidenziato. Con "sigle" (lista ordini) il servizio
-è indicato con S / LS / L, altrimenti per esteso ("+ lavaggio", "solo lavaggio").
+Un chip per capo e servizio (le ceste miste ne hanno più d'uno), con la sigla
+S / LS / L; i capi da lavare hanno il chip evidenziato.
 */
-const chipsCapi = (o, sigle = false) => CAPI.flatMap(c => gruppiDi(o, c)
+const chipsCapi = o => CAPI.flatMap(c => gruppiDi(o, c)
     .map(({ servizio:s, n }) => {
-        /* Un chip per servizio: le ceste miste ne hanno più d'uno */
         const nome = n === 1 ? c.uno : c.nome.toLowerCase();
-        if(sigle){
-            const [sigla, testo] = SIGLE_SERVIZIO[chiaveServizio(s)];
-            return `<span class="chip${s ? " chip-lavare" : ""}" title="${testo}"><b>${n}</b> ${nome} <span class="sigla">${sigla}</span></span>`;
-        }
-        return `<span class="chip${s ? " chip-lavare" : ""}"><b>${n}</b> ${nome}${s === "solo" ? " · solo lavaggio" : s ? " + lavaggio" : ""}</span>`;
+        const [sigla, testo] = SIGLE_SERVIZIO[chiaveServizio(s)];
+        return `<span class="chip${s ? " chip-lavare" : ""}" title="${testo}"><b>${n}</b> ${nome} <span class="sigla">${sigla}</span></span>`;
     }))
     .join("");
 
@@ -1103,7 +1099,7 @@ function disegnaOrdini(){
                 <td class="num">#${numeroOrdine(o.id)}</td>
                 <td>${badgeSede(o.sede)}</td>
                 <td class="cliente"><strong>${esc(o.nome)} ${esc(o.cognome)}</strong><span>${esc(telefonoLeggibile(o.telefono))}</span></td>
-                <td><div class="chips">${chipsCapi(o, true)}</div></td>
+                <td><div class="chips">${chipsCapi(o)}</div></td>
                 <td class="importo-cella"><strong>${chf(o.importo)}</strong>${badgePagamento(o)}</td>
                 <td class="data-cella">${dataBreve(daISO(o.data))}<span class="sotto">ore ${o.creato.slice(11)}</span></td>
                 <td class="data-cella">${dataBreve(daISO(o.ritiro))}${inRitardo ? '<span class="ritardo">Oltre la data prevista</span>' : '<span class="sotto">dalle 14.00</span>'}</td>
