@@ -71,3 +71,9 @@ Il sito è statico: nessuna compilazione.
 Il calcolo della data di ritiro usa il carico di **tutte** le sedi (la stireria
 è una sola): le sedi ricevono i totali per giorno, mai nomi o telefoni degli
 ordini altrui.
+
+## Cache del browser
+
+Il dominio stireria.frequenze.app fa tenere `app.js` in cache ai browser per 4 ore.
+A ogni pubblicazione aggiornare il numero di versione in `index.html`
+(`<script src="app.js?v=…">`), così i browser scaricano subito la versione nuova.
