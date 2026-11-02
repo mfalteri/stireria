@@ -775,6 +775,16 @@ function aggiornaTotale(){
     return totale;
 }
 
+/*
+Nome e cognome con l'iniziale maiuscola in ogni parola (il resto resta com'è scritto):
+"mario" → "Mario", "de luca" → "De Luca", "d'amico" → "D'Amico", "rossi-bianchi" → "Rossi-Bianchi".
+*/
+const iniziali = s => String(s).trim().replace(/\s+/g, " ")
+    .replace(/(^|[\s'’\-])(\p{L})/gu, (_, prima, lettera) => prima + lettera.toLocaleUpperCase("it-CH"));
+
+/* Appena si esce dal campo il nome si vede già corretto */
+["nome", "cognome", "modNome", "modCognome"].forEach(id =>
+    $("#" + id).addEventListener("blur", e => { e.target.value = iniziali(e.target.value); }));
 
 /*
 Numero in formato internazionale senza "+".
@@ -933,8 +943,8 @@ $("#formOrdine").addEventListener("submit", async e => {
     e.preventDefault();
     if(ordineRegistrato) return;
 
-    const nome = $("#nome").value.trim();
-    const cognome = $("#cognome").value.trim();
+    const nome = iniziali($("#nome").value);
+    const cognome = iniziali($("#cognome").value);
     const telefono = normalizzaTelefono($("#telefono").value);
     const capi = capiInseriti();
     const lavaggi = lavaggiInseriti();
@@ -1157,8 +1167,8 @@ $("#formModificaCliente").addEventListener("submit", async e => {
     e.preventDefault();
     const o = ordineInModifica;
     if(!o) return;
-    const nome = $("#modNome").value.trim();
-    const cognome = $("#modCognome").value.trim();
+    const nome = iniziali($("#modNome").value);
+    const cognome = iniziali($("#modCognome").value);
     const telefono = normalizzaTelefono($("#modTelefono").value);
     if(!nome) return erroreModifica("Inserisci il nome del cliente.", "modNome");
     if(!cognome) return erroreModifica("Inserisci il cognome del cliente.", "modCognome");
