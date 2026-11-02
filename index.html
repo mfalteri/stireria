@@ -1599,6 +1599,24 @@ Documento dell'ordine: pagina 1 la ricevuta, poi una pagina A4 per ogni etichett
     </div>
 </div>
 
+<!-- ============ Modifica dati del cliente (solo admin) ============ -->
+<div id="modificaCliente" class="velo" hidden>
+    <form class="dialogo" id="formModificaCliente" role="dialog" aria-modal="true" aria-labelledby="modificaTitolo" novalidate>
+        <h3 id="modificaTitolo">Modifica dati del cliente</h3>
+        <p class="muted" id="modificaOrdine"></p>
+        <div class="riga2">
+            <label class="campo"><span>Nome</span><input id="modNome" autocomplete="off"></label>
+            <label class="campo"><span>Cognome</span><input id="modCognome" autocomplete="off"></label>
+        </div>
+        <label class="campo"><span>Telefono</span><input id="modTelefono" type="tel" inputmode="tel" placeholder="079 123 45 67" autocomplete="off"></label>
+        <p id="modErrore" class="errore" hidden></p>
+        <div class="azioni">
+            <button type="button" class="btn" id="modAnnulla">Annulla</button>
+            <button type="submit" class="btn btn-primario" id="modSalva">Salva</button>
+        </div>
+    </form>
+</div>
+
 <!-- ============ Scelta stampa piano di lavoro ============ -->
 <div id="sceltaStampa" class="velo" hidden>
     <div class="dialogo" role="dialog" aria-modal="true" aria-labelledby="stampaTitolo">

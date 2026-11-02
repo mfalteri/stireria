@@ -1109,6 +1109,7 @@ function disegnaOrdini(){
                         ${avanti ? `<button class="btn btn-piccolo" data-avanza="${o.id}" data-stato="${avanti[0]}">${avanti[1]}</button>` : ""}
                         ${!o.sospeso && o.stato === "ritirato" && !o.pagato ? `<button class="btn btn-piccolo" data-incassa="${o.id}">Segna pagato</button>` : ""}
                         <button class="btn btn-piccolo" data-documenti="${o.id}">Ricevuta ed etichette</button>
+                        ${isAdmin() && !o.dati_rimossi_il ? `<button class="btn btn-piccolo" data-modifica="${o.id}">Modifica cliente</button>` : ""}
                         ${isAdmin() ? `<button class="btn btn-piccolo" data-sospendi="${o.id}">${o.sospeso ? "Abilita" : "Disabilita"}</button>` : ""}
                         ${isAdmin() ? `<button class="btn btn-piccolo btn-pericolo" data-elimina="${o.id}">Elimina</button>` : ""}
                     </div>
@@ -1119,6 +1120,63 @@ function disegnaOrdini(){
     $("#nessunOrdine").hidden = elenco.length > 0;
     aggiornaBadge();
 }
+
+/* ---------- Modifica dei dati del cliente (solo admin; il database lo consente solo all'admin) ---------- */
+
+let ordineInModifica = null;
+
+function apriModificaCliente(o){
+    if(!o || !isAdmin() || o.dati_rimossi_il) return;
+    ordineInModifica = o;
+    $("#modificaOrdine").textContent = "Ordine #" + numeroOrdine(o.id) + " · " + SEDI[o.sede];
+    $("#modNome").value = o.nome;
+    $("#modCognome").value = o.cognome;
+    $("#modTelefono").value = telefonoLeggibile(o.telefono);
+    erroreModifica("");
+    $("#modificaCliente").hidden = false;
+    $("#modNome").focus();
+}
+
+function chiudiModificaCliente(){
+    $("#modificaCliente").hidden = true;
+    ordineInModifica = null;
+}
+
+function erroreModifica(testo, campo){
+    $("#modErrore").textContent = testo;
+    $("#modErrore").hidden = !testo;
+    ["modNome","modCognome","modTelefono"].forEach(id => $("#" + id).removeAttribute("aria-invalid"));
+    if(campo){ $("#" + campo).setAttribute("aria-invalid","true"); $("#" + campo).focus(); }
+}
+
+$("#modAnnulla").addEventListener("click", chiudiModificaCliente);
+$("#modificaCliente").addEventListener("click", e => { if(e.target === $("#modificaCliente")) chiudiModificaCliente(); });
+document.addEventListener("keydown", e => { if(e.key === "Escape" && !$("#modificaCliente").hidden) chiudiModificaCliente(); });
+
+$("#formModificaCliente").addEventListener("submit", async e => {
+    e.preventDefault();
+    const o = ordineInModifica;
+    if(!o) return;
+    const nome = $("#modNome").value.trim();
+    const cognome = $("#modCognome").value.trim();
+    const telefono = normalizzaTelefono($("#modTelefono").value);
+    if(!nome) return erroreModifica("Inserisci il nome del cliente.", "modNome");
+    if(!cognome) return erroreModifica("Inserisci il cognome del cliente.", "modCognome");
+    const erroreTelefono = controllaTelefono(telefono);
+    if(erroreTelefono) return erroreModifica(erroreTelefono, "modTelefono");
+    if(nome === o.nome && cognome === o.cognome && telefono === o.telefono) return chiudiModificaCliente();
+
+    const salva = $("#modSalva");
+    salva.disabled = true;
+    const { data:riga, error } = await sb.from("ordini").update({ nome, cognome, telefono }).eq("id", o.id).select().single();
+    salva.disabled = false;
+    if(error) return erroreDatabase(error, "Modifica dei dati del cliente");
+
+    Object.assign(o, daRiga(riga));
+    chiudiModificaCliente();
+    disegnaOrdini();
+    avvisa("Ordine #" + numeroOrdine(o.id) + ": dati del cliente aggiornati");
+});
 
 $("#righeOrdini").addEventListener("click", async e => {
     const avanza = e.target.closest("[data-avanza]");
@@ -1177,6 +1235,9 @@ $("#righeOrdini").addEventListener("click", async e => {
     if(documenti){
         apriDocumentiOrdine(db.ordini.find(x => x.id === Number(documenti.dataset.documenti)));
     }
+
+    const modifica = e.target.closest("[data-modifica]");
+    if(modifica) apriModificaCliente(db.ordini.find(x => x.id === Number(modifica.dataset.modifica)));
 
     /* Solo admin: mette in sospeso o riattiva un ordine (il database lo consente solo all'admin) */
     const sospendi = e.target.closest("[data-sospendi]");

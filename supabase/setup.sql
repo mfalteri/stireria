@@ -811,3 +811,54 @@ as $$
 $$;
 revoke all on function public.carico_giornaliero() from public, anon;
 grant execute on function public.carico_giornaliero() to authenticated;
+
+-- =====================================================================
+-- L'amministratore può correggere nome, cognome e telefono di un ordine
+-- (non dopo la cancellazione dei dati a 90 giorni). Telefono normalizzato.
+-- =====================================================================
+grant update (stato, pagato, sospeso, nome, cognome, telefono) on public.ordini to authenticated;
+
+create or replace function public.controlla_cambio_stato()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+    if public.mio_ruolo() is not null then
+        if new.sospeso is distinct from old.sospeso and public.mio_ruolo() <> 'admin' then
+            raise exception 'Solo l''amministratore può sospendere o riattivare un ordine';
+        end if;
+        if old.sospeso and new.sospeso and (new.stato is distinct from old.stato or new.pagato is distinct from old.pagato) then
+            raise exception 'L''ordine è in sospeso: riattivalo prima di cambiarne stato o pagamento';
+        end if;
+
+        -- Dati del cliente: solo l'amministratore, e non dopo la cancellazione dei 90 giorni
+        if new.nome is distinct from old.nome or new.cognome is distinct from old.cognome or new.telefono is distinct from old.telefono then
+            if public.mio_ruolo() <> 'admin' then
+                raise exception 'Solo l''amministratore può modificare i dati del cliente';
+            end if;
+            if old.dati_rimossi_il is not null then
+                raise exception 'I dati di questo cliente sono già stati cancellati (90 giorni)';
+            end if;
+            if new.nome is null or new.cognome is null or new.telefono is null then
+                raise exception 'Nome, cognome e telefono sono obbligatori';
+            end if;
+            new.nome := trim(new.nome);
+            new.cognome := trim(new.cognome);
+            new.telefono := public.normalizza_telefono(new.telefono);
+            if new.telefono like '410%' then
+                new.telefono := '41' || substr(new.telefono, 4);
+            end if;
+        end if;
+    end if;
+    if public.mio_ruolo() = 'sede' then
+        if new.stato is distinct from old.stato and not (
+            (old.stato = 'lavorazione' and new.stato = 'pronto') or
+            (old.stato = 'pronto'      and new.stato = 'ritirato')
+        ) then
+            raise exception 'Passaggio di stato non consentito: % → %', old.stato, new.stato;
+        end if;
+        if old.pagato and not new.pagato then
+            raise exception 'Un pagamento registrato può essere annullato solo dall''amministratore';
+        end if;
+    end if;
+    return new;
+end $$;
